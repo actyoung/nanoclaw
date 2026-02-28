@@ -7,11 +7,7 @@ import {
   RegisteredGroup,
   NewMessage,
 } from '../types.js';
-import {
-  FEISHU_APP_ID,
-  FEISHU_APP_SECRET,
-  ASSISTANT_NAME,
-} from '../config.js';
+import { FEISHU_APP_ID, FEISHU_APP_SECRET, ASSISTANT_NAME } from '../config.js';
 
 export interface FeishuChannelOpts {
   onMessage: OnInboundMessage;
@@ -112,7 +108,7 @@ export class FeishuChannel implements Channel {
           this.connected = true;
           logger.info('Feishu WebSocket connected');
           this.flushOutgoingQueue().catch((err) =>
-            logger.error({ err }, 'Failed to flush outgoing queue')
+            logger.error({ err }, 'Failed to flush outgoing queue'),
           );
         }
       },
@@ -142,7 +138,10 @@ export class FeishuChannel implements Channel {
 
   private async handleMessage(data: FeishuMessageEvent): Promise<void> {
     // 添加调试日志
-    logger.info({ eventType: 'im.message.receive_v1', data }, 'Received Feishu event');
+    logger.info(
+      { eventType: 'im.message.receive_v1', data },
+      'Received Feishu event',
+    );
 
     const { message, sender } = data;
     const chatId = message.chat_id;
@@ -160,7 +159,12 @@ export class FeishuChannel implements Channel {
     const groups = this.opts.registeredGroups();
     if (!groups[chatJid]) {
       // 记录未注册群组的信息，方便用户获取 chat_id
-      logger.info({ chatJid, chatId, chatType }, 'Received message from unregistered Feishu chat. To register, run: npm run setup -- --step register --jid "' + chatJid + '" --name "My Group" --trigger "@Andy" --folder main');
+      logger.info(
+        { chatJid, chatId, chatType },
+        'Received message from unregistered Feishu chat. To register, run: npm run setup -- --step register --jid "' +
+          chatJid +
+          '" --name "My Group" --trigger "@Andy" --folder main',
+      );
       return;
     }
 
@@ -181,9 +185,9 @@ export class FeishuChannel implements Channel {
 
     // 获取发送者信息
     const senderId = sender.sender_id.open_id;
-    const senderName = message.mentions?.find(
-      (m) => m.id.open_id === senderId
-    )?.name || senderId.slice(0, 8);
+    const senderName =
+      message.mentions?.find((m) => m.id.open_id === senderId)?.name ||
+      senderId.slice(0, 8);
 
     // 检查是否是机器人消息
     const isFromMe = senderId === this.botOpenId;
@@ -202,7 +206,7 @@ export class FeishuChannel implements Channel {
 
     logger.info(
       { chatJid, sender: senderName, content: content.slice(0, 100) },
-      'Feishu message received'
+      'Feishu message received',
     );
 
     this.opts.onMessage(chatJid, newMessage);
@@ -219,21 +223,59 @@ export class FeishuChannel implements Channel {
       this.outgoingQueue.push({ chatId, text: prefixed });
       logger.info(
         { chatId, queueSize: this.outgoingQueue.length },
-        'Feishu disconnected, message queued'
+        'Feishu disconnected, message queued',
       );
       return;
     }
 
     try {
-      await this.sendFeishuMessage(chatId, prefixed);
-      logger.info({ chatId, length: prefixed.length }, 'Feishu message sent');
+      // 自动识别是否使用卡片消息
+      if (this.shouldUseCardMessage(prefixed)) {
+        await this.sendCardMessage(chatId, prefixed);
+        logger.info({ chatId, length: prefixed.length }, 'Feishu card message sent');
+      } else {
+        await this.sendFeishuMessage(chatId, prefixed);
+        logger.info({ chatId, length: prefixed.length }, 'Feishu text message sent');
+      }
     } catch (err) {
       this.outgoingQueue.push({ chatId, text: prefixed });
       logger.warn(
         { chatId, err, queueSize: this.outgoingQueue.length },
-        'Failed to send Feishu message, queued'
+        'Failed to send Feishu message, queued',
       );
     }
+  }
+
+  /**
+   * 判断是否应该使用卡片消息
+   * 当消息包含以下特征时使用卡片：
+   * - 包含链接
+   * - 包含多行结构化内容（如新闻列表、分节内容）
+   * - 包含标题标记（如 ## 标题）
+   * - 包含分隔线（---）
+   */
+  private shouldUseCardMessage(text: string): boolean {
+    // 包含链接
+    if (text.includes('http://') || text.includes('https://')) {
+      return true;
+    }
+    // 包含多个标题（## 或 **标题**）
+    if ((text.match(/##\s+|\*\*[\s\S]*?\*\*/g) || []).length >= 2) {
+      return true;
+    }
+    // 包含分隔线
+    if (text.includes('---')) {
+      return true;
+    }
+    // 包含多个项目符号段落（可能是新闻列表）
+    if ((text.match(/^[\s]*[•\-\*]\s+/gm) || []).length >= 3) {
+      return true;
+    }
+    // 消息长度较长且结构复杂
+    if (text.length > 500 && text.split('\n').length > 10) {
+      return true;
+    }
+    return false;
   }
 
   private async sendFeishuMessage(chatId: string, text: string): Promise<void> {
@@ -249,8 +291,139 @@ export class FeishuChannel implements Channel {
     });
 
     if (response.code !== 0) {
-      throw new Error(`Feishu API error: ${response.msg} (code: ${response.code})`);
+      throw new Error(
+        `Feishu API error: ${response.msg} (code: ${response.code})`,
+      );
     }
+  }
+
+  /**
+   * 发送飞书卡片消息
+   * 将文本内容转换为美观的卡片格式
+   */
+  private async sendCardMessage(chatId: string, text: string): Promise<void> {
+    const cardContent = this.buildCardContent(text);
+
+    const response = await this.client.im.v1.message.create({
+      params: {
+        receive_id_type: 'chat_id',
+      },
+      data: {
+        receive_id: chatId,
+        content: JSON.stringify(cardContent),
+        msg_type: 'interactive',
+      },
+    });
+
+    if (response.code !== 0) {
+      throw new Error(
+        `Feishu API error: ${response.msg} (code: ${response.code})`,
+      );
+    }
+  }
+
+  /**
+   * 构建卡片内容
+   * 将纯文本转换为飞书卡片 JSON 格式
+   */
+  private buildCardContent(text: string): Record<string, unknown> {
+    const elements: Array<Record<string, unknown>> = [];
+    const lines = text.split('\n');
+
+    let currentSection: Array<Record<string, unknown>> = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // 处理标题（## 标题 或 **标题**）
+      if (line.startsWith('## ') || (line.startsWith('**') && line.endsWith('**') && line.length < 100)) {
+        // 先提交当前段落
+        if (currentSection.length > 0) {
+          elements.push(...currentSection);
+          currentSection = [];
+        }
+
+        const titleText = line.replace(/^##\s+|\*\*/g, '').trim();
+        elements.push({
+          tag: 'div',
+          text: {
+            tag: 'lark_md',
+            content: `**${titleText}**`,
+          },
+        });
+        continue;
+      }
+
+      // 处理分隔线
+      if (line === '---') {
+        if (currentSection.length > 0) {
+          elements.push(...currentSection);
+          currentSection = [];
+        }
+        elements.push({
+          tag: 'hr',
+        });
+        continue;
+      }
+
+      // 处理项目符号列表
+      const bulletMatch = line.match(/^[\s]*[•\-\*]\s+(.*)$/);
+      if (bulletMatch) {
+        const content = bulletMatch[1];
+        // 转换链接为飞书格式
+        const processedContent = this.processLinks(content);
+        currentSection.push({
+          tag: 'div',
+          text: {
+            tag: 'lark_md',
+            content: `• ${processedContent}`,
+          },
+        });
+        continue;
+      }
+
+      // 处理普通文本（转换链接）
+      const processedLine = this.processLinks(line);
+      currentSection.push({
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: processedLine,
+        },
+      });
+    }
+
+    // 提交剩余段落
+    if (currentSection.length > 0) {
+      elements.push(...currentSection);
+    }
+
+    // 构建完整卡片
+    return {
+      config: {
+        wide_screen_mode: true,
+      },
+      header: {
+        title: {
+          tag: 'plain_text',
+          content: `${ASSISTANT_NAME} 回复`,
+        },
+        template: 'blue',
+      },
+      elements,
+    };
+  }
+
+  /**
+   * 处理文本中的链接，转换为飞书 markdown 格式
+   */
+  private processLinks(text: string): string {
+    // 转换 [标题](URL) 格式
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '[$1]($2)');
+    // 转换纯 URL 为链接格式
+    text = text.replace(/(https?:\/\/[^\s\)\]]+)/g, '[$1]($1)');
+    return text;
   }
 
   isConnected(): boolean {
@@ -297,7 +470,7 @@ export class FeishuChannel implements Channel {
           new Date().toISOString(),
           chat.name,
           'feishu',
-          true // Assume all listed chats are groups
+          true, // Assume all listed chats are groups
         );
       }
     } catch (err) {
@@ -311,7 +484,7 @@ export class FeishuChannel implements Channel {
     try {
       logger.info(
         { count: this.outgoingQueue.length },
-        'Flushing Feishu outgoing queue'
+        'Flushing Feishu outgoing queue',
       );
       while (this.outgoingQueue.length > 0) {
         const item = this.outgoingQueue.shift()!;

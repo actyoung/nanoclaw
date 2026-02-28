@@ -69,5 +69,7 @@ export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 // Feishu configuration
-export const FEISHU_APP_ID = process.env.FEISHU_APP_ID || envConfig.FEISHU_APP_ID || '';
-export const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || envConfig.FEISHU_APP_SECRET || '';
+export const FEISHU_APP_ID =
+  process.env.FEISHU_APP_ID || envConfig.FEISHU_APP_ID || '';
+export const FEISHU_APP_SECRET =
+  process.env.FEISHU_APP_SECRET || envConfig.FEISHU_APP_SECRET || '';
