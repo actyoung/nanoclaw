@@ -232,10 +232,16 @@ export class FeishuChannel implements Channel {
       // 自动识别是否使用卡片消息
       if (this.shouldUseCardMessage(prefixed)) {
         await this.sendCardMessage(chatId, prefixed);
-        logger.info({ chatId, length: prefixed.length }, 'Feishu card message sent');
+        logger.info(
+          { chatId, length: prefixed.length },
+          'Feishu card message sent',
+        );
       } else {
         await this.sendFeishuMessage(chatId, prefixed);
-        logger.info({ chatId, length: prefixed.length }, 'Feishu text message sent');
+        logger.info(
+          { chatId, length: prefixed.length },
+          'Feishu text message sent',
+        );
       }
     } catch (err) {
       this.outgoingQueue.push({ chatId, text: prefixed });
@@ -337,7 +343,10 @@ export class FeishuChannel implements Channel {
       if (!line) continue;
 
       // 处理标题（## 标题 或 **标题**）
-      if (line.startsWith('## ') || (line.startsWith('**') && line.endsWith('**') && line.length < 100)) {
+      if (
+        line.startsWith('## ') ||
+        (line.startsWith('**') && line.endsWith('**') && line.length < 100)
+      ) {
         // 先提交当前段落
         if (currentSection.length > 0) {
           elements.push(...currentSection);
