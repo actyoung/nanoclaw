@@ -161,7 +161,7 @@ function setupLinux(
 
 /**
  * Kill any orphaned nanoclaw node processes left from previous runs or debugging.
- * Prevents WhatsApp "conflict" disconnects when two instances connect simultaneously.
+ * Prevents Feishu webhook conflicts when two instances run simultaneously.
  */
 function killOrphanedProcesses(projectRoot: string): void {
   try {

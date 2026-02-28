@@ -49,7 +49,7 @@ claude
 
 ## 功能支持
 
-- **WhatsApp 输入/输出** - 通过手机给 Claude 发消息
+- **飞书机器人 输入/输出** - 通过手机给 Claude 发消息
 - **隔离的群组上下文** - 每个群组都拥有独立的 `CLAUDE.md` 记忆和隔离的文件系统。它们在各自的容器沙箱中运行，且仅挂载所需的文件系统。
 - **主频道** - 您的私有频道（self-chat），用于管理控制；其他所有群组都完全隔离
 - **计划任务** - 运行 Claude 的周期性作业，并可以给您回发消息
@@ -92,7 +92,7 @@ claude
 
 **不要添加功能，而是添加技能。**
 
-如果您想添加 Telegram 支持，不要创建一个 PR 同时添加 Telegram 和 WhatsApp。而是贡献一个技能文件 (`.claude/skills/add-telegram/SKILL.md`)，教 Claude Code 如何改造一个 NanoClaw 安装以使用 Telegram。
+如果您想添加 Telegram 支持，不要创建一个 PR 同时添加 Telegram 和飞书。而是贡献一个技能文件 (`.claude/skills/add-telegram/SKILL.md`)，教 Claude Code 如何改造一个 NanoClaw 安装以使用 Telegram。
 
 然后用户在自己的 fork 上运行 `/add-telegram`，就能得到只做他们需要事情的整洁代码，而不是一个试图支持所有用例的臃肿系统。
 
@@ -101,7 +101,7 @@ claude
 我们希望看到的技能：
 
 **通信渠道**
-- `/add-telegram` - 添加 Telegram 作为渠道。应提供选项让用户选择替换 WhatsApp 或作为额外渠道添加。也应能将其添加为控制渠道（可以触发动作）或仅作为被其他地方触发的动作所使用的渠道。
+- `/add-telegram` - 添加 Telegram 作为渠道。应提供选项让用户选择替换飞书或作为额外渠道添加。也应能将其添加为控制渠道（可以触发动作）或仅作为被其他地方触发的动作所使用的渠道。
 - `/add-slack` - 添加 Slack
 - `/add-discord` - 添加 Discord
 
@@ -121,14 +121,14 @@ claude
 ## 架构
 
 ```
-WhatsApp (baileys) --> SQLite --> 轮询循环 --> 容器 (Claude Agent SDK) --> 响应
+飞书 (Feishu) --> SQLite --> 轮询循环 --> 容器 (Claude Agent SDK) --> 响应
 ```
 
 单一 Node.js 进程。智能体在具有挂载目录的隔离 Linux 容器中执行。每个群组的消息队列都带有全局并发控制。通过文件系统进行进程间通信（IPC）。
 
 关键文件：
 - `src/index.ts` - 编排器：状态管理、消息循环、智能体调用
-- `src/channels/whatsapp.ts` - WhatsApp 连接、认证、收发消息
+- `src/channels/feishu.ts` - 飞书机器人连接、webhook 处理、收发消息
 - `src/ipc.ts` - IPC 监听与任务处理
 - `src/router.ts` - 消息格式化与出站路由
 - `src/group-queue.ts` - 各带全局并发限制的群组队列
@@ -139,9 +139,9 @@ WhatsApp (baileys) --> SQLite --> 轮询循环 --> 容器 (Claude Agent SDK) -->
 
 ## FAQ
 
-**为什么是 WhatsApp 而不是 Telegram/Signal 等？**
+**为什么是飞书而不是 Telegram/Signal 等？**
 
-因为我用 WhatsApp。Fork 这个项目然后运行一个技能来改变它。正是这个项目的核心理念。
+因为我用飞书。Fork 这个项目然后运行一个技能来改变它。正是这个项目的核心理念。
 
 **为什么是 Docker？**
 

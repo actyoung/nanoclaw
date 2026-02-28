@@ -1,11 +1,15 @@
 ---
 name: add-voice-transcription
-description: Add voice message transcription to NanoClaw using OpenAI's Whisper API. Automatically transcribes WhatsApp voice notes so the agent can read and respond to them.
+description: Add voice message transcription to NanoClaw using OpenAI's Whisper API. Automatically transcribes voice messages so the agent can read and respond to them.
 ---
 
 # Add Voice Transcription
 
-This skill adds automatic voice message transcription to NanoClaw's WhatsApp channel using OpenAI's Whisper API. When a voice note arrives, it is downloaded, transcribed, and delivered to the agent as `[Voice: <transcript>]`.
+**Note:** This skill currently needs to be updated for Feishu compatibility. Feishu voice messages require downloading audio files via the Feishu Message Resource API (https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-resource/get), which differs from the previous WhatsApp implementation.
+
+NanoClaw now uses WebSocket long connection to receive events from Feishu, so no public webhook URL is required.
+
+This skill adds automatic voice message transcription to NanoClaw's channel using OpenAI's Whisper API. When a voice note arrives, it is downloaded, transcribed, and delivered to the agent as `[Voice: <transcript>]`.
 
 ## Phase 1: Pre-flight
 
