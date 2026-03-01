@@ -1,6 +1,6 @@
 ---
 name: add-telegram
-description: Add Telegram as a channel. Can replace WhatsApp entirely or run alongside it. Also configurable as a control-only channel (triggers actions) or passive channel (receives notifications only).
+description: Add Telegram as a channel. Can replace Feishu entirely or run alongside it. Also configurable as a control-only channel (triggers actions) or passive channel (receives notifications only).
 ---
 
 # Add Telegram Channel
@@ -17,9 +17,9 @@ Read `.nanoclaw/state.yaml`. If `telegram` is in `applied_skills`, skip to Phase
 
 Use `AskUserQuestion` to collect configuration:
 
-AskUserQuestion: Should Telegram replace WhatsApp or run alongside it?
-- **Replace WhatsApp** - Telegram will be the only channel (sets TELEGRAM_ONLY=true)
-- **Alongside** - Both Telegram and WhatsApp channels active
+AskUserQuestion: Should Telegram replace Feishu or run alongside it?
+- **Replace Feishu** - Telegram will be the only channel (sets TELEGRAM_ONLY=true)
+- **Alongside** - Both Telegram and Feishu channels active
 
 AskUserQuestion: Do you have a Telegram bot token, or do you need to create one?
 
@@ -92,7 +92,7 @@ Add to `.env`:
 TELEGRAM_BOT_TOKEN=<their-token>
 ```
 
-If they chose to replace WhatsApp:
+If they chose to replace Feishu:
 
 ```bash
 TELEGRAM_ONLY=true
@@ -235,8 +235,8 @@ To remove Telegram integration:
 
 1. Delete `src/channels/telegram.ts`
 2. Remove `TelegramChannel` import and creation from `src/index.ts`
-3. Remove `channels` array and revert to using `whatsapp` directly in `processGroupMessages`, scheduler deps, and IPC deps
-4. Revert `getAvailableGroups()` filter to only include `@g.us` chats
+3. Remove `channels` array and revert to using `feishu` directly in `processGroupMessages`, scheduler deps, and IPC deps
+4. Revert `getAvailableGroups()` filter to only include `feishu:%` chats
 5. Remove Telegram config (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_ONLY`) from `src/config.ts`
 6. Remove Telegram registrations from SQLite: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE 'tg:%'"`
 7. Uninstall: `npm uninstall grammy`

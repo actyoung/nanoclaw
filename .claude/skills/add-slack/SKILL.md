@@ -1,6 +1,6 @@
 ---
 name: add-slack
-description: Add Slack as a channel. Can replace WhatsApp entirely or run alongside it. Uses Socket Mode (no public URL needed).
+description: Add Slack as a channel. Can replace Feishu entirely or run alongside it. Uses Socket Mode (no public URL needed).
 ---
 
 # Add Slack Channel
@@ -15,7 +15,7 @@ Read `.nanoclaw/state.yaml`. If `slack` is in `applied_skills`, skip to Phase 3 
 
 ### Ask the user
 
-1. **Mode**: Replace WhatsApp or add alongside it?
+1. **Mode**: Replace Feishu or add alongside it?
    - Replace → will set `SLACK_ONLY=true`
    - Alongside → both channels active (default)
 
@@ -89,7 +89,7 @@ SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_APP_TOKEN=xapp-your-app-token
 ```
 
-If they chose to replace WhatsApp:
+If they chose to replace Feishu:
 
 ```bash
 SLACK_ONLY=true
@@ -215,7 +215,7 @@ The Slack channel supports:
 - **Public channels** — Bot must be added to the channel
 - **Private channels** — Bot must be invited to the channel
 - **Direct messages** — Users can DM the bot directly
-- **Multi-channel** — Can run alongside WhatsApp (default) or replace it (`SLACK_ONLY=true`)
+- **Multi-channel** — Can run alongside Feishu (default) or replace it (`SLACK_ONLY=true`)
 
 ## Known Limitations
 

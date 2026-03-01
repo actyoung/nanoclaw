@@ -76,7 +76,7 @@ SLACK_BOT_TOKEN=xoxb-your-bot-token-here
 SLACK_APP_TOKEN=xapp-your-app-token-here
 ```
 
-If you want Slack to replace WhatsApp entirely (no WhatsApp channel), also add:
+If you want Slack to replace Feishu entirely (no Feishu channel), also add:
 
 ```
 SLACK_ONLY=true
