@@ -10,7 +10,7 @@ import {
   SLACK_ONLY,
   TRIGGER_PATTERN,
 } from './config.js';
-import { WhatsAppChannel } from './channels/whatsapp.js';
+import { FeishuChannel } from './channels/feishu.js';
 import { SlackChannel } from './channels/slack.js';
 import {
   ContainerOutput,
@@ -51,7 +51,7 @@ let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
-let whatsapp: WhatsAppChannel;
+let feishu: FeishuChannel;
 let slack: SlackChannel | undefined;
 const channels: Channel[] = [];
 const queue = new GroupQueue();
@@ -437,9 +437,9 @@ async function main(): Promise<void> {
   const hasSlackTokens = !!(slackEnv.SLACK_BOT_TOKEN && slackEnv.SLACK_APP_TOKEN);
 
   if (!SLACK_ONLY) {
-    whatsapp = new WhatsAppChannel(channelOpts);
-    channels.push(whatsapp);
-    await whatsapp.connect();
+    new FeishuChannel FeishuChannel(channelOpts);
+    channels.push(feishu);
+    await feishu.connect();
   }
 
   if (hasSlackTokens) {
@@ -474,7 +474,7 @@ async function main(): Promise<void> {
     registerGroup,
     syncGroupMetadata: async (force) => {
       // Sync metadata across all active channels
-      if (whatsapp) await whatsapp.syncGroupMetadata(force);
+      if (feishu) await feishu.syncGroupMetadata(force);
       if (slack) await slack.syncChannelMetadata();
     },
     getAvailableGroups,

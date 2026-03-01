@@ -1,7 +1,7 @@
 # Intent: src/index.ts modifications
 
 ## What changed
-Added Discord as a channel option alongside WhatsApp, introducing multi-channel infrastructure.
+Added Discord as a channel option alongside Feishu, introducing multi-channel infrastructure.
 
 ## Key sections
 
@@ -13,19 +13,19 @@ Added Discord as a channel option alongside WhatsApp, introducing multi-channel 
 
 ### Multi-channel infrastructure
 - Added: `const channels: Channel[] = []` array to hold all active channels
-- Changed: `processGroupMessages` uses `findChannel(channels, chatJid)` instead of `whatsapp` directly
-- Changed: `startMessageLoop` uses `findChannel(channels, chatJid)` instead of `whatsapp` directly
-- Changed: `channel.setTyping?.()` instead of `whatsapp.setTyping()`
-- Changed: `channel.sendMessage()` instead of `whatsapp.sendMessage()`
+- Changed: `processGroupMessages` uses `findChannel(channels, chatJid)` instead of `feishu` directly
+- Changed: `startMessageLoop` uses `findChannel(channels, chatJid)` instead of `feishu` directly
+- Changed: `channel.setTyping?.()` instead of `feishu.setTyping()`
+- Changed: `channel.sendMessage()` instead of `feishu.sendMessage()`
 
 ### getAvailableGroups()
 - Unchanged: uses `c.is_group` filter from base (Discord channels pass `isGroup=true` via `onChatMetadata`)
 
 ### main()
 - Added: `channelOpts` shared callback object for all channels
-- Changed: WhatsApp conditional to `if (!DISCORD_ONLY)`
+- Changed: Feishu conditional to `if (!DISCORD_ONLY)`
 - Added: conditional Discord creation (`if (DISCORD_BOT_TOKEN)`)
-- Changed: shutdown iterates `channels` array instead of just `whatsapp`
+- Changed: shutdown iterates `channels` array instead of just `feishu`
 - Changed: subsystems use `findChannel(channels, jid)` for message routing
 
 ## Invariants
@@ -40,4 +40,4 @@ Added Discord as a channel option alongside WhatsApp, introducing multi-channel 
 - The `_setRegisteredGroups` test helper
 - The `isDirectRun` guard at bottom
 - All error handling and cursor rollback logic in processGroupMessages
-- The outgoing queue flush and reconnection logic (in WhatsAppChannel, not here)
+- The outgoing queue flush and reconnection logic (in FeishuChannel, not here)

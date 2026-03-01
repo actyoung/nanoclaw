@@ -1,7 +1,7 @@
 # Intent: src/index.ts modifications
 
 ## What changed
-Refactored from single WhatsApp channel to multi-channel architecture using the `Channel` interface.
+Refactored from single Feishu channel to multi-channel architecture using the `Channel` interface.
 
 ## Key sections
 
@@ -13,24 +13,24 @@ Refactored from single WhatsApp channel to multi-channel architecture using the 
 
 ### Module-level state
 - Added: `const channels: Channel[] = []` — array of all active channels
-- Kept: `let whatsapp: WhatsAppChannel` — still needed for `syncGroupMetadata` reference
+- Kept: `let feishu: FeishuChannel` — still needed for `syncGroupMetadata` reference
 
 ### processGroupMessages()
 - Added: `findChannel(channels, chatJid)` lookup at the start
-- Changed: `whatsapp.setTyping()` → `channel.setTyping?.()` (optional chaining)
-- Changed: `whatsapp.sendMessage()` → `channel.sendMessage()` in output callback
+- Changed: `feishu.setTyping()` → `channel.setTyping?.()` (optional chaining)
+- Changed: `feishu.sendMessage()` → `channel.sendMessage()` in output callback
 
 ### getAvailableGroups()
 - Unchanged: uses `c.is_group` filter from base (Telegram channels pass `isGroup=true` via `onChatMetadata`)
 
 ### startMessageLoop()
 - Added: `findChannel(channels, chatJid)` lookup per group in message processing
-- Changed: `whatsapp.setTyping()` → `channel.setTyping?.()` for typing indicators
+- Changed: `feishu.setTyping()` → `channel.setTyping?.()` for typing indicators
 
 ### main()
 - Changed: shutdown disconnects all channels via `for (const ch of channels)`
 - Added: shared `channelOpts` object for channel callbacks
-- Added: conditional WhatsApp creation (`if (!TELEGRAM_ONLY)`)
+- Added: conditional Feishu creation (`if (!TELEGRAM_ONLY)`)
 - Added: conditional Telegram creation (`if (TELEGRAM_BOT_TOKEN)`)
 - Changed: scheduler `sendMessage` uses `findChannel()` → `channel.sendMessage()`
 - Changed: IPC `sendMessage` uses `findChannel()` → `channel.sendMessage()`
@@ -47,4 +47,4 @@ Refactored from single WhatsApp channel to multi-channel architecture using the 
 - The `_setRegisteredGroups` test helper
 - The `isDirectRun` guard at bottom
 - All error handling and cursor rollback logic in processGroupMessages
-- The outgoing queue flush and reconnection logic (in WhatsAppChannel, not here)
+- The outgoing queue flush and reconnection logic (in FeishuChannel, not here)

@@ -1,7 +1,7 @@
 # Intent: src/index.ts modifications
 
 ## What changed
-Refactored from single WhatsApp channel to multi-channel architecture supporting Slack alongside WhatsApp.
+Refactored from single Feishu channel to multi-channel architecture supporting Slack alongside Feishu.
 
 ## Key sections
 
@@ -12,7 +12,7 @@ Refactored from single WhatsApp channel to multi-channel architecture supporting
 - Existing: `findChannel` from `./router.js` and `Channel` type from `./types.js` are already present
 
 ### Module-level state
-- Kept: `let whatsapp: WhatsAppChannel` — still needed for `syncGroupMetadata` reference
+- Kept: `let feishu: FeishuChannel` — still needed for `syncGroupMetadata` reference
 - Added: `let slack: SlackChannel | undefined` — direct reference for `syncChannelMetadata`
 - Kept: `const channels: Channel[] = []` — array of all active channels
 
@@ -26,15 +26,15 @@ Refactored from single WhatsApp channel to multi-channel architecture supporting
 
 ### main()
 - Added: Reads Slack tokens via `readEnvFile()` to check if Slack is configured
-- Added: conditional WhatsApp creation (`if (!SLACK_ONLY)`)
+- Added: conditional Feishu creation (`if (!SLACK_ONLY)`)
 - Added: conditional Slack creation (`if (hasSlackTokens)`)
 - Changed: scheduler `sendMessage` uses `findChannel()` → `channel.sendMessage()`
-- Changed: IPC `syncGroupMetadata` syncs both WhatsApp and Slack metadata
+- Changed: IPC `syncGroupMetadata` syncs both Feishu and Slack metadata
 - Changed: IPC `sendMessage` uses `findChannel()` → `channel.sendMessage()`
 
 ### Shutdown handler
-- Changed from `await whatsapp.disconnect()` to `for (const ch of channels) await ch.disconnect()`
-- Disconnects all active channels (WhatsApp, Slack, or any future channels) on SIGTERM/SIGINT
+- Changed from `await feishu.disconnect()` to `for (const ch of channels) await ch.disconnect()`
+- Disconnects all active channels (Feishu, Slack, or any future channels) on SIGTERM/SIGINT
 
 ## Invariants
 - All existing message processing logic (triggers, cursors, idle timers) is preserved

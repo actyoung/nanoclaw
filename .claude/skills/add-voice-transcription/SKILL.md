@@ -45,15 +45,15 @@ npx tsx scripts/apply-skill.ts .claude/skills/add-voice-transcription
 
 This deterministically:
 - Adds `src/transcription.ts` (voice transcription module using OpenAI Whisper)
-- Three-way merges voice handling into `src/channels/whatsapp.ts` (isVoiceMessage check, transcribeAudioMessage call)
-- Three-way merges transcription tests into `src/channels/whatsapp.test.ts` (mock + 3 test cases)
+- Three-way merges voice handling into `src/channels/feishu.ts` (isVoiceMessage check, transcribeAudioMessage call)
+- Three-way merges transcription tests into `src/channels/feishu.test.ts` (mock + 3 test cases)
 - Installs the `openai` npm dependency
 - Updates `.env.example` with `OPENAI_API_KEY`
 - Records the application in `.nanoclaw/state.yaml`
 
 If the apply reports merge conflicts, read the intent files:
-- `modify/src/channels/whatsapp.ts.intent.md` — what changed and invariants for whatsapp.ts
-- `modify/src/channels/whatsapp.test.ts.intent.md` — what changed for whatsapp.test.ts
+- `modify/src/channels/feishu.ts.intent.md` — what changed and invariants for feishu.ts
+- `modify/src/channels/feishu.test.ts.intent.md` — what changed for feishu.test.ts
 
 ### Validate code changes
 
@@ -111,7 +111,7 @@ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 
 Tell the user:
 
-> Send a voice note in any registered WhatsApp chat. The agent should receive it as `[Voice: <transcript>]` and respond to its content.
+> Send a voice note in any registered Feishu chat. The agent should receive it as `[Voice: <transcript>]` and respond to its content.
 
 ### Check logs if needed
 

@@ -9,7 +9,7 @@ import {
   TRIGGER_PATTERN,
 } from './config.js';
 import { GmailChannel } from './channels/gmail.js';
-import { WhatsAppChannel } from './channels/whatsapp.js';
+import { FeishuChannel } from './channels/feishu.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -49,7 +49,7 @@ let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
-let whatsapp: WhatsAppChannel;
+let feishu: FeishuChannel;
 const channels: Channel[] = [];
 const queue = new GroupQueue();
 
@@ -446,9 +446,9 @@ async function main(): Promise<void> {
   };
 
   // Create and connect channels
-  whatsapp = new WhatsAppChannel(channelOpts);
-  channels.push(whatsapp);
-  await whatsapp.connect();
+  new FeishuChannel FeishuChannel(channelOpts);
+  channels.push(feishu);
+  await feishu.connect();
 
   const gmail = new GmailChannel(channelOpts);
   channels.push(gmail);
@@ -482,7 +482,7 @@ async function main(): Promise<void> {
     },
     registeredGroups: () => registeredGroups,
     registerGroup,
-    syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
+    syncGroupMetadata: (force) => feishu?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
   });
