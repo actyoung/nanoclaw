@@ -42,7 +42,7 @@ function store(overrides: {
 
 describe('storeMessage', () => {
   it('stores a message and retrieves it', () => {
-    storeChatMetadata('group', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('feishu:oc_group', '2024-01-01T00:00:00.000Z');
 
     store({
       id: 'msg-1',
@@ -54,7 +54,7 @@ describe('storeMessage', () => {
     });
 
     const messages = getMessagesSince(
-      'group',
+      'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
       'Andy',
     );
@@ -66,7 +66,7 @@ describe('storeMessage', () => {
   });
 
   it('filters out empty content', () => {
-    storeChatMetadata('group', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('feishu:oc_group', '2024-01-01T00:00:00.000Z');
 
     store({
       id: 'msg-2',
@@ -78,7 +78,7 @@ describe('storeMessage', () => {
     });
 
     const messages = getMessagesSince(
-      'group',
+      'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
       'Andy',
     );
@@ -86,7 +86,7 @@ describe('storeMessage', () => {
   });
 
   it('stores is_from_me flag', () => {
-    storeChatMetadata('group', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('feishu:oc_group', '2024-01-01T00:00:00.000Z');
 
     store({
       id: 'msg-3',
@@ -100,7 +100,7 @@ describe('storeMessage', () => {
 
     // Message is stored (we can retrieve it — is_from_me doesn't affect retrieval)
     const messages = getMessagesSince(
-      'group',
+      'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
       'Andy',
     );
@@ -108,7 +108,7 @@ describe('storeMessage', () => {
   });
 
   it('upserts on duplicate id+chat_jid', () => {
-    storeChatMetadata('group', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('feishu:oc_group', '2024-01-01T00:00:00.000Z');
 
     store({
       id: 'msg-dup',
@@ -129,7 +129,7 @@ describe('storeMessage', () => {
     });
 
     const messages = getMessagesSince(
-      'group',
+      'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
       'Andy',
     );
@@ -142,7 +142,7 @@ describe('storeMessage', () => {
 
 describe('getMessagesSince', () => {
   beforeEach(() => {
-    storeChatMetadata('group', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('feishu:oc_group', '2024-01-01T00:00:00.000Z');
 
     store({
       id: 'm1',
@@ -180,20 +180,20 @@ describe('getMessagesSince', () => {
   });
 
   it('returns messages after the given timestamp', () => {
-    const msgs = getMessagesSince('group', '2024-01-01T00:00:02.000Z', 'Andy');
+    const msgs = getMessagesSince('feishu:oc_group', '2024-01-01T00:00:02.000Z', 'Andy');
     // Should exclude m1, m2 (before/at timestamp), m3 (bot message)
     expect(msgs).toHaveLength(1);
     expect(msgs[0].content).toBe('third');
   });
 
   it('excludes bot messages via is_bot_message flag', () => {
-    const msgs = getMessagesSince('group', '2024-01-01T00:00:00.000Z', 'Andy');
+    const msgs = getMessagesSince('feishu:oc_group', '2024-01-01T00:00:00.000Z', 'Andy');
     const botMsgs = msgs.filter((m) => m.content === 'bot reply');
     expect(botMsgs).toHaveLength(0);
   });
 
   it('returns all non-bot messages when sinceTimestamp is empty', () => {
-    const msgs = getMessagesSince('group', '', 'Andy');
+    const msgs = getMessagesSince('feishu:oc_group', '', 'Andy');
     // 3 user messages (bot message excluded)
     expect(msgs).toHaveLength(3);
   });
@@ -208,7 +208,7 @@ describe('getMessagesSince', () => {
       content: 'Andy: old bot reply',
       timestamp: '2024-01-01T00:00:05.000Z',
     });
-    const msgs = getMessagesSince('group', '2024-01-01T00:00:04.000Z', 'Andy');
+    const msgs = getMessagesSince('feishu:oc_group', '2024-01-01T00:00:04.000Z', 'Andy');
     expect(msgs).toHaveLength(0);
   });
 });
@@ -217,8 +217,8 @@ describe('getMessagesSince', () => {
 
 describe('getNewMessages', () => {
   beforeEach(() => {
-    storeChatMetadata('group1', '2024-01-01T00:00:00.000Z');
-    storeChatMetadata('group2', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('feishu:oc_group1', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('feishu:oc_group2', '2024-01-01T00:00:00.000Z');
 
     store({
       id: 'a1',
@@ -257,7 +257,7 @@ describe('getNewMessages', () => {
 
   it('returns new messages across multiple groups', () => {
     const { messages, newTimestamp } = getNewMessages(
-      ['group1', 'group2'],
+      ['feishu:oc_group1', 'feishu:oc_group2'],
       '2024-01-01T00:00:00.000Z',
       'Andy',
     );
@@ -268,7 +268,7 @@ describe('getNewMessages', () => {
 
   it('filters by timestamp', () => {
     const { messages } = getNewMessages(
-      ['group1', 'group2'],
+      ['feishu:oc_group1', 'feishu:oc_group2'],
       '2024-01-01T00:00:02.000Z',
       'Andy',
     );
