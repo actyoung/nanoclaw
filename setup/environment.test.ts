@@ -104,7 +104,7 @@ describe('Docker detection logic', () => {
   });
 });
 
-describe('WhatsApp auth detection', () => {
+describe('Feishu auth detection', () => {
   it('detects non-empty auth directory logic', () => {
     // Simulate the check: directory exists and has files
     const hasAuth = (authDir: string) => {

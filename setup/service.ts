@@ -262,7 +262,7 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
     );
   }
 
-  // Kill orphaned nanoclaw processes to avoid WhatsApp conflict errors
+  // Kill orphaned nanoclaw processes to avoid channel conflict errors
   killOrphanedProcesses(projectRoot);
 
   // Enable and start

@@ -27,8 +27,8 @@ container ls -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
 # 4. Recent errors in service log?
 grep -E 'ERROR|WARN' logs/nanoclaw.log | tail -20
 
-# 5. Is WhatsApp connected? (look for last connection event)
-grep -E 'Connected to WhatsApp|Connection closed|connection.*close' logs/nanoclaw.log | tail -5
+# 5. Is Feishu connected? (look for last connection event)
+grep -E 'Feishu connected|Connection closed|connection.*close' logs/nanoclaw.log | tail -5
 
 # 6. Are groups loaded?
 grep 'groupCount' logs/nanoclaw.log | tail -3
@@ -77,7 +77,7 @@ grep -E 'Scheduling retry|retry|Max retries' logs/nanoclaw.log | tail -10
 ## Agent Not Responding
 
 ```bash
-# Check if messages are being received from WhatsApp
+# Check if messages are being received from Feishu
 grep 'New messages' logs/nanoclaw.log | tail -10
 
 # Check if messages are being processed (container spawned)
@@ -110,17 +110,17 @@ sqlite3 store/messages.db "SELECT name, container_config FROM registered_groups;
 container run -i --rm --entrypoint ls nanoclaw-agent:latest /workspace/extra/
 ```
 
-## WhatsApp Auth Issues
+## Feishu Auth Issues
 
 ```bash
-# Check if QR code was requested (means auth expired)
-grep 'QR\|authentication required\|qr' logs/nanoclaw.log | tail -5
+# Check if Feishu credentials are valid
+grep 'Feishu\|authentication\|auth' logs/nanoclaw.log | tail -5
 
-# Check auth files exist
-ls -la store/auth/
+# Check if app credentials are configured
+grep 'FEISHU_APP_ID\|FEISHU_APP_SECRET' .env
 
-# Re-authenticate if needed
-npm run auth
+# Re-authenticate if needed (verify credentials)
+npm run setup -- --step feishu-auth
 ```
 
 ## Service Management
