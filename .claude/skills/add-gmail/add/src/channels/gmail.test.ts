@@ -28,7 +28,7 @@ describe('GmailChannel', () => {
       expect(channel.ownsJid('12345@g.us')).toBe(false);
       expect(channel.ownsJid('tg:123')).toBe(false);
       expect(channel.ownsJid('dc:456')).toBe(false);
-      expect(channel.ownsJid('user@s.whatsapp.net')).toBe(false);
+      expect(channel.ownsJid('feishu:ou_user')).toBe(false);
     });
   });
 

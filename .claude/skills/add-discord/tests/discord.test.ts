@@ -90,7 +90,7 @@ describe('discord skill package', () => {
 
     // Multi-channel architecture
     expect(content).toContain('const channels: Channel[] = []');
-    expect(content).toContain('channels.push(whatsapp)');
+    expect(content).toContain('channels.push(feishu)');
     expect(content).toContain('channels.push(discord)');
 
     // Conditional channel creation

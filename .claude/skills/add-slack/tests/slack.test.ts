@@ -94,7 +94,7 @@ describe('slack skill package', () => {
 
     // Multi-channel architecture
     expect(content).toContain('const channels: Channel[] = []');
-    expect(content).toContain('channels.push(whatsapp)');
+    expect(content).toContain('channels.push(feishu)');
     expect(content).toContain('channels.push(slack)');
 
     // Conditional channel creation
@@ -134,11 +134,11 @@ describe('slack skill package', () => {
     expect(content).toContain('slack:D');
 
     // Mixed ordering test
-    expect(content).toContain('mixes WhatsApp and Slack');
+    expect(content).toContain('mixes Feishu and Slack');
 
-    // All original WhatsApp tests preserved
-    expect(content).toContain('@g.us');
-    expect(content).toContain('@s.whatsapp.net');
+    // All original Feishu tests preserved
+    expect(content).toContain('feishu:oc_');
+    expect(content).toContain('feishu:ou_');
     expect(content).toContain('__group_sync__');
   });
 

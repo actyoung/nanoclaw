@@ -693,14 +693,14 @@ describe('SlackChannel', () => {
       expect(channel.ownsJid('slack:D0123456789')).toBe(true);
     });
 
-    it('does not own WhatsApp group JIDs', () => {
+    it('does not own Feishu group JIDs', () => {
       const channel = new SlackChannel(createTestOpts());
       expect(channel.ownsJid('12345@g.us')).toBe(false);
     });
 
-    it('does not own WhatsApp DM JIDs', () => {
+    it('does not own Feishu DM JIDs', () => {
       const channel = new SlackChannel(createTestOpts());
-      expect(channel.ownsJid('12345@s.whatsapp.net')).toBe(false);
+      expect(channel.ownsJid('feishu:oc_12345')).toBe(false);
     });
 
     it('does not own Telegram JIDs', () => {

@@ -29,26 +29,26 @@ describe('voice-transcription skill package', () => {
   });
 
   it('has all files declared in modifies', () => {
-    const whatsappFile = path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.ts');
-    const whatsappTestFile = path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.test.ts');
+    const feishuFile = path.join(skillDir, 'modify', 'src', 'channels', 'feishu.ts');
+    const feishuTestFile = path.join(skillDir, 'modify', 'src', 'channels', 'feishu.test.ts');
 
-    expect(fs.existsSync(whatsappFile)).toBe(true);
-    expect(fs.existsSync(whatsappTestFile)).toBe(true);
+    expect(fs.existsSync(feishuFile)).toBe(true);
+    expect(fs.existsSync(feishuTestFile)).toBe(true);
   });
 
   it('has intent files for modified files', () => {
-    expect(fs.existsSync(path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.ts.intent.md'))).toBe(true);
-    expect(fs.existsSync(path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.test.ts.intent.md'))).toBe(true);
+    expect(fs.existsSync(path.join(skillDir, 'modify', 'src', 'channels', 'feishu.ts.intent.md'))).toBe(true);
+    expect(fs.existsSync(path.join(skillDir, 'modify', 'src', 'channels', 'feishu.test.ts.intent.md'))).toBe(true);
   });
 
-  it('modified whatsapp.ts preserves core structure', () => {
+  it('modified feishu.ts preserves core structure', () => {
     const content = fs.readFileSync(
-      path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.ts'),
+      path.join(skillDir, 'modify', 'src', 'channels', 'feishu.ts'),
       'utf-8',
     );
 
     // Core class and methods preserved
-    expect(content).toContain('class WhatsAppChannel');
+    expect(content).toContain('class FeishuChannel');
     expect(content).toContain('implements Channel');
     expect(content).toContain('async connect()');
     expect(content).toContain('async sendMessage(');
@@ -66,9 +66,9 @@ describe('voice-transcription skill package', () => {
     expect(content).toContain('STORE_DIR');
   });
 
-  it('modified whatsapp.ts includes transcription integration', () => {
+  it('modified feishu.ts includes transcription integration', () => {
     const content = fs.readFileSync(
-      path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.ts'),
+      path.join(skillDir, 'modify', 'src', 'channels', 'feishu.ts'),
       'utf-8',
     );
 
@@ -84,9 +84,9 @@ describe('voice-transcription skill package', () => {
     expect(content).toContain('[Voice Message - transcription failed]');
   });
 
-  it('modified whatsapp.test.ts includes transcription mock and tests', () => {
+  it('modified feishu.test.ts includes transcription mock and tests', () => {
     const content = fs.readFileSync(
-      path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.test.ts'),
+      path.join(skillDir, 'modify', 'src', 'channels', 'feishu.test.ts'),
       'utf-8',
     );
 
@@ -102,9 +102,9 @@ describe('voice-transcription skill package', () => {
     expect(content).toContain('[Voice: Hello this is a voice message]');
   });
 
-  it('modified whatsapp.test.ts preserves all existing test sections', () => {
+  it('modified feishu.test.ts preserves all existing test sections', () => {
     const content = fs.readFileSync(
-      path.join(skillDir, 'modify', 'src', 'channels', 'whatsapp.test.ts'),
+      path.join(skillDir, 'modify', 'src', 'channels', 'feishu.test.ts'),
       'utf-8',
     );
 
