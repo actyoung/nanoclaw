@@ -531,7 +531,9 @@ export function getRegisteredGroup(
   jid: string,
 ): (RegisteredGroup & { jid: string }) | undefined {
   const row = db
-    .prepare('SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups WHERE jid = ?')
+    .prepare(
+      'SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups WHERE jid = ?',
+    )
     .get(jid) as
     | {
         jid: string;
@@ -581,7 +583,11 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
 }
 
 export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
-  const rows = db.prepare('SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups').all() as Array<{
+  const rows = db
+    .prepare(
+      'SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups',
+    )
+    .all() as Array<{
     jid: string;
     name: string;
     folder: string;
