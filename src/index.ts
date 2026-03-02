@@ -144,7 +144,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // For non-main groups, check if trigger is required and present
   // Only @mention (is_mentioned) triggers the agent
   if (!isMainGroup && group.requiresTrigger !== false) {
-    const hasTrigger = missedMessages.some((m) => m.is_mentioned === true);
+    const hasTrigger = missedMessages.some((m) => m.is_mentioned === true || m.is_mentioned === 1);
     if (!hasTrigger) return true;
   }
 
@@ -363,7 +363,7 @@ async function startMessageLoop(): Promise<void> {
           // context when a trigger eventually arrives.
           if (needsTrigger) {
             const hasTrigger = groupMessages.some(
-              (m) => m.is_mentioned === true,
+              (m) => m.is_mentioned === true || m.is_mentioned === 1,
             );
             if (!hasTrigger) continue;
           }

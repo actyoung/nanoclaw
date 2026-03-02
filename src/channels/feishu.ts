@@ -187,7 +187,7 @@ export class FeishuChannel implements Channel {
         if (typedData.event?.type === 'connect') {
           this.connected = true;
           this.updateLastMessageTime(); // 连接成功时更新时间
-          logger.info('Feishu WebSocket connected');
+          logger.info('Feishu WebSocket connected (via system callback)');
           this.flushOutgoingQueue().catch((err) =>
             logger.error({ err }, 'Failed to flush outgoing queue'),
           );
@@ -211,9 +211,15 @@ export class FeishuChannel implements Channel {
     logger.info('WebSocket client started, waiting for connection...');
 
     // 使用一个延迟来设置 connected 状态（SDK 内部会自动重连）
+    // 重连后 system.call_back_v2 可能不会被触发，所以使用延迟作为后备
     setTimeout(() => {
-      // 如果收到了消息，说明连接成功了
-      this.connected = true;
+      if (!this.connected) {
+        this.connected = true;
+        logger.info('Feishu WebSocket connected (via timeout fallback)');
+        this.flushOutgoingQueue().catch((err) =>
+          logger.error({ err }, 'Failed to flush outgoing queue'),
+        );
+      }
     }, 5000);
 
     // 启动心跳检测
@@ -290,6 +296,9 @@ export class FeishuChannel implements Channel {
       // 先停止心跳，避免重复
       this.stopHeartbeat();
 
+      // 重置连接状态
+      this.connected = false;
+
       // 停止现有客户端（如果可能）
       try {
         // @ts-expect-error - SDK 类型定义不完整，但实际有此方法
@@ -303,6 +312,17 @@ export class FeishuChannel implements Channel {
 
       // 重置最后消息时间，给新连接一个宽限期
       this.lastMessageTime = Date.now();
+
+      // 重新创建 WebSocket 客户端（stop 后不能重用）
+      const config = {
+        appId: FEISHU_APP_ID,
+        appSecret: FEISHU_APP_SECRET,
+        loggerLevel: Lark.LoggerLevel.info,
+      };
+      this.wsClient = new Lark.WSClient({
+        ...config,
+        loggerLevel: Lark.LoggerLevel.info,
+      });
 
       // 重新启动 WebSocket
       this.startWebSocket();

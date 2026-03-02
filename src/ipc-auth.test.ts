@@ -15,22 +15,22 @@ import { RegisteredGroup } from './types.js';
 const MAIN_GROUP: RegisteredGroup = {
   name: 'Main',
   folder: 'main',
-  trigger: 'always',
   added_at: '2024-01-01T00:00:00.000Z',
+  requiresTrigger: false,
 };
 
 const OTHER_GROUP: RegisteredGroup = {
   name: 'Other',
   folder: 'other-group',
-  trigger: '@Andy',
   added_at: '2024-01-01T00:00:00.000Z',
+  requiresTrigger: true,
 };
 
 const THIRD_GROUP: RegisteredGroup = {
   name: 'Third',
   folder: 'third-group',
-  trigger: '@Andy',
   added_at: '2024-01-01T00:00:00.000Z',
+  requiresTrigger: true,
 };
 
 let groups: Record<string, RegisteredGroup>;
@@ -336,7 +336,6 @@ describe('register_group authorization', () => {
         jid: 'new@g.us',
         name: 'New Group',
         folder: 'new-group',
-        trigger: '@Andy',
       },
       'other-group',
       false,
@@ -354,7 +353,6 @@ describe('register_group authorization', () => {
         jid: 'new@g.us',
         name: 'New Group',
         folder: '../../outside',
-        trigger: '@Andy',
       },
       'main',
       true,
@@ -640,7 +638,6 @@ describe('register_group success', () => {
         jid: 'new@g.us',
         name: 'New Group',
         folder: 'new-group',
-        trigger: '@Andy',
       },
       'main',
       true,
@@ -652,7 +649,6 @@ describe('register_group success', () => {
     expect(group).toBeDefined();
     expect(group!.name).toBe('New Group');
     expect(group!.folder).toBe('new-group');
-    expect(group!.trigger).toBe('@Andy');
   });
 
   it('register_group rejects request with missing fields', async () => {
@@ -661,7 +657,7 @@ describe('register_group success', () => {
         type: 'register_group',
         jid: 'partial@g.us',
         name: 'Partial',
-        // missing folder and trigger
+        // missing folder
       },
       'main',
       true,

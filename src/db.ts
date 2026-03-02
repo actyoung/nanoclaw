@@ -32,6 +32,7 @@ function createSchema(database: Database.Database): void {
       timestamp TEXT,
       is_from_me INTEGER,
       is_bot_message INTEGER DEFAULT 0,
+      is_mentioned INTEGER DEFAULT 0,
       PRIMARY KEY (id, chat_jid),
       FOREIGN KEY (chat_jid) REFERENCES chats(jid)
     );
@@ -77,7 +78,6 @@ function createSchema(database: Database.Database): void {
       jid TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       folder TEXT NOT NULL UNIQUE,
-      trigger_pattern TEXT NOT NULL,
       added_at TEXT NOT NULL,
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
@@ -102,6 +102,15 @@ function createSchema(database: Database.Database): void {
     database
       .prepare(`UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`)
       .run(`Andy:%`);
+  } catch {
+    /* column already exists */
+  }
+
+  // Add is_mentioned column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE messages ADD COLUMN is_mentioned INTEGER DEFAULT 0`,
+    );
   } catch {
     /* column already exists */
   }
@@ -252,7 +261,7 @@ export function setLastGroupSync(): void {
  */
 export function storeMessage(msg: NewMessage): void {
   db.prepare(
-    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, is_mentioned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     msg.id,
     msg.chat_jid,
@@ -262,6 +271,7 @@ export function storeMessage(msg: NewMessage): void {
     msg.timestamp,
     msg.is_from_me ? 1 : 0,
     msg.is_bot_message ? 1 : 0,
+    msg.is_mentioned ? 1 : 0,
   );
 }
 
@@ -277,9 +287,10 @@ export function storeMessageDirect(msg: {
   timestamp: string;
   is_from_me: boolean;
   is_bot_message?: boolean;
+  is_mentioned?: boolean;
 }): void {
   db.prepare(
-    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, is_mentioned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     msg.id,
     msg.chat_jid,
@@ -289,6 +300,7 @@ export function storeMessageDirect(msg: {
     msg.timestamp,
     msg.is_from_me ? 1 : 0,
     msg.is_bot_message ? 1 : 0,
+    msg.is_mentioned ? 1 : 0,
   );
 }
 
@@ -302,7 +314,7 @@ export function getNewMessages(
   // Filter bot messages using the is_bot_message flag
   // Also exclude legacy bot message format as a backstop
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned
     FROM messages
     WHERE timestamp > ? AND chat_jid IN (${placeholders})
       AND is_bot_message = 0
@@ -328,7 +340,7 @@ export function getMessagesSince(
   // Filter bot messages using the is_bot_message flag
   // Also exclude legacy bot message format as a backstop
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0
@@ -519,13 +531,12 @@ export function getRegisteredGroup(
   jid: string,
 ): (RegisteredGroup & { jid: string }) | undefined {
   const row = db
-    .prepare('SELECT * FROM registered_groups WHERE jid = ?')
+    .prepare('SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups WHERE jid = ?')
     .get(jid) as
     | {
         jid: string;
         name: string;
         folder: string;
-        trigger_pattern: string;
         added_at: string;
         container_config: string | null;
         requires_trigger: number | null;
@@ -543,7 +554,6 @@ export function getRegisteredGroup(
     jid: row.jid,
     name: row.name,
     folder: row.folder,
-    trigger: row.trigger_pattern,
     added_at: row.added_at,
     containerConfig: row.container_config
       ? JSON.parse(row.container_config)
@@ -558,13 +568,12 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     throw new Error(`Invalid group folder "${group.folder}" for JID ${jid}`);
   }
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, requires_trigger)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
     group.folder,
-    group.trigger,
     group.added_at,
     group.containerConfig ? JSON.stringify(group.containerConfig) : null,
     group.requiresTrigger === undefined ? 1 : group.requiresTrigger ? 1 : 0,
@@ -572,11 +581,10 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
 }
 
 export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
-  const rows = db.prepare('SELECT * FROM registered_groups').all() as Array<{
+  const rows = db.prepare('SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups').all() as Array<{
     jid: string;
     name: string;
     folder: string;
-    trigger_pattern: string;
     added_at: string;
     container_config: string | null;
     requires_trigger: number | null;
@@ -593,7 +601,6 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     result[row.jid] = {
       name: row.name,
       folder: row.folder,
-      trigger: row.trigger_pattern,
       added_at: row.added_at,
       containerConfig: row.container_config
         ? JSON.parse(row.container_config)

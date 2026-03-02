@@ -63,7 +63,6 @@ function createTestOpts(
       'feishu:oc_test123': {
         name: 'Test Group',
         folder: 'test-group',
-        trigger: '@Bot',
         added_at: '2024-01-01T00:00:00.000Z',
       },
     })),

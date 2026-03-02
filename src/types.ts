@@ -35,7 +35,6 @@ export interface ContainerConfig {
 export interface RegisteredGroup {
   name: string;
   folder: string;
-  trigger: string;
   added_at: string;
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
@@ -53,8 +52,9 @@ export interface NewMessage {
   /**
    * Whether the message explicitly mentions/@ the bot/agent.
    * Used for trigger detection in group chats.
+   * Note: SQLite returns 0/1, so this can be boolean or number.
    */
-  is_mentioned?: boolean;
+  is_mentioned?: boolean | number;
 }
 
 export interface ScheduledTask {

@@ -167,7 +167,6 @@ export async function processTaskIpc(
     jid?: string;
     name?: string;
     folder?: string;
-    trigger?: string;
     requiresTrigger?: boolean;
     containerConfig?: RegisteredGroup['containerConfig'];
   },
@@ -357,7 +356,7 @@ export async function processTaskIpc(
         );
         break;
       }
-      if (data.jid && data.name && data.folder && data.trigger) {
+      if (data.jid && data.name && data.folder) {
         if (!isValidGroupFolder(data.folder)) {
           logger.warn(
             { sourceGroup, folder: data.folder },
@@ -368,7 +367,6 @@ export async function processTaskIpc(
         deps.registerGroup(data.jid, {
           name: data.name,
           folder: data.folder,
-          trigger: data.trigger,
           added_at: new Date().toISOString(),
           containerConfig: data.containerConfig,
           requiresTrigger: data.requiresTrigger,
