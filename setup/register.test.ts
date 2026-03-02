@@ -15,7 +15,6 @@ function createTestDb(): Database.Database {
     jid TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     folder TEXT NOT NULL UNIQUE,
-    trigger_pattern TEXT NOT NULL,
     added_at TEXT NOT NULL,
     container_config TEXT,
     requires_trigger INTEGER DEFAULT 1
@@ -33,13 +32,12 @@ describe('parameterized SQL registration', () => {
   it('registers a group with parameterized query', () => {
     db.prepare(
       `INSERT OR REPLACE INTO registered_groups
-       (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-       VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+       (jid, name, folder, added_at, container_config, requires_trigger)
+       VALUES (?, ?, ?, ?, NULL, ?)`,
     ).run(
       '123@g.us',
       'Test Group',
       'test-group',
-      '@Andy',
       '2024-01-01T00:00:00.000Z',
       1,
     );
@@ -50,14 +48,12 @@ describe('parameterized SQL registration', () => {
       jid: string;
       name: string;
       folder: string;
-      trigger_pattern: string;
       requires_trigger: number;
     };
 
     expect(row.jid).toBe('123@g.us');
     expect(row.name).toBe('Test Group');
     expect(row.folder).toBe('test-group');
-    expect(row.trigger_pattern).toBe('@Andy');
     expect(row.requires_trigger).toBe(1);
   });
 
@@ -66,13 +62,12 @@ describe('parameterized SQL registration', () => {
 
     db.prepare(
       `INSERT OR REPLACE INTO registered_groups
-       (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-       VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+       (jid, name, folder, added_at, container_config, requires_trigger)
+       VALUES (?, ?, ?, ?, NULL, ?)`,
     ).run(
       '456@g.us',
       name,
       'obriens-group',
-      '@Andy',
       '2024-01-01T00:00:00.000Z',
       0,
     );
@@ -91,9 +86,9 @@ describe('parameterized SQL registration', () => {
 
     db.prepare(
       `INSERT OR REPLACE INTO registered_groups
-       (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-       VALUES (?, ?, ?, ?, ?, NULL, ?)`,
-    ).run(maliciousJid, 'Evil', 'evil', '@Andy', '2024-01-01T00:00:00.000Z', 1);
+       (jid, name, folder, added_at, container_config, requires_trigger)
+       VALUES (?, ?, ?, ?, NULL, ?)`,
+    ).run(maliciousJid, 'Evil', 'evil', '2024-01-01T00:00:00.000Z', 1);
 
     // Table should still exist and have the row
     const count = db
@@ -112,13 +107,12 @@ describe('parameterized SQL registration', () => {
   it('handles requiresTrigger=false', () => {
     db.prepare(
       `INSERT OR REPLACE INTO registered_groups
-       (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-       VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+       (jid, name, folder, added_at, container_config, requires_trigger)
+       VALUES (?, ?, ?, ?, NULL, ?)`,
     ).run(
       'feishu:oc_789',
       'Personal',
       'main',
-      '@Andy',
       '2024-01-01T00:00:00.000Z',
       0,
     );
@@ -133,15 +127,14 @@ describe('parameterized SQL registration', () => {
   it('upserts on conflict', () => {
     const stmt = db.prepare(
       `INSERT OR REPLACE INTO registered_groups
-       (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-       VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+       (jid, name, folder, added_at, container_config, requires_trigger)
+       VALUES (?, ?, ?, ?, NULL, ?)`,
     );
 
     stmt.run(
       '123@g.us',
       'Original',
       'main',
-      '@Andy',
       '2024-01-01T00:00:00.000Z',
       1,
     );
@@ -149,7 +142,6 @@ describe('parameterized SQL registration', () => {
       '123@g.us',
       'Updated',
       'main',
-      '@Bot',
       '2024-02-01T00:00:00.000Z',
       0,
     );
@@ -159,38 +151,36 @@ describe('parameterized SQL registration', () => {
 
     const row = rows[0] as {
       name: string;
-      trigger_pattern: string;
       requires_trigger: number;
     };
     expect(row.name).toBe('Updated');
-    expect(row.trigger_pattern).toBe('@Bot');
     expect(row.requires_trigger).toBe(0);
   });
 });
 
 describe('file templating', () => {
   it('replaces assistant name in CLAUDE.md content', () => {
-    let content = '# Andy\n\nYou are Andy, a personal assistant.';
+    let content = '# AI Assistant\n\nYou are AI Assistant, a personal assistant.';
 
-    content = content.replace(/^# Andy$/m, '# Nova');
-    content = content.replace(/You are Andy/g, 'You are Nova');
+    content = content.replace(/^# AI Assistant$/m, '# Nova');
+    content = content.replace(/You are AI Assistant/g, 'You are Nova');
 
     expect(content).toBe('# Nova\n\nYou are Nova, a personal assistant.');
   });
 
   it('handles names with special regex characters', () => {
-    let content = '# Andy\n\nYou are Andy.';
+    let content = '# AI Assistant\n\nYou are AI Assistant.';
 
     const newName = 'C.L.A.U.D.E';
-    content = content.replace(/^# Andy$/m, `# ${newName}`);
-    content = content.replace(/You are Andy/g, `You are ${newName}`);
+    content = content.replace(/^# AI Assistant$/m, `# ${newName}`);
+    content = content.replace(/You are AI Assistant/g, `You are ${newName}`);
 
     expect(content).toContain('# C.L.A.U.D.E');
     expect(content).toContain('You are C.L.A.U.D.E.');
   });
 
   it('updates .env ASSISTANT_NAME line', () => {
-    let envContent = 'SOME_KEY=value\nASSISTANT_NAME="Andy"\nOTHER=test';
+    let envContent = 'SOME_KEY=value\nASSISTANT_NAME="AI Assistant"\nOTHER=test';
 
     envContent = envContent.replace(
       /^ASSISTANT_NAME=.*$/m,

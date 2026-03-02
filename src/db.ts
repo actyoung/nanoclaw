@@ -138,6 +138,32 @@ function createSchema(database: Database.Database): void {
   } catch {
     /* columns already exist */
   }
+
+  // Remove trigger_pattern column if it exists (migration for existing DBs)
+  // SQLite doesn't support DROP COLUMN, so we need to recreate the table
+  const hasTriggerPattern = database
+    .prepare(
+      `SELECT 1 FROM pragma_table_info('registered_groups') WHERE name = 'trigger_pattern'`,
+    )
+    .get();
+  if (hasTriggerPattern) {
+    logger.info('Migrating registered_groups: removing trigger_pattern column');
+    database.exec(`
+      CREATE TABLE registered_groups_new (
+        jid TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        folder TEXT NOT NULL UNIQUE,
+        added_at TEXT NOT NULL,
+        container_config TEXT,
+        requires_trigger INTEGER DEFAULT 1
+      );
+      INSERT INTO registered_groups_new (jid, name, folder, added_at, container_config, requires_trigger)
+        SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups;
+      DROP TABLE registered_groups;
+      ALTER TABLE registered_groups_new RENAME TO registered_groups;
+    `);
+    logger.info('Migration complete: trigger_pattern column removed');
+  }
 }
 
 export function initDatabase(): void {

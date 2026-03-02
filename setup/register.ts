@@ -17,7 +17,6 @@ import { emitStatus } from './status.js';
 interface RegisterArgs {
   jid: string;
   name: string;
-  trigger: string;
   folder: string;
   requiresTrigger: boolean;
   assistantName: string;
@@ -27,10 +26,9 @@ function parseArgs(args: string[]): RegisterArgs {
   const result: RegisterArgs = {
     jid: '',
     name: '',
-    trigger: '',
     folder: '',
     requiresTrigger: true,
-    assistantName: 'Andy',
+    assistantName: 'AI Assistant',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -41,9 +39,6 @@ function parseArgs(args: string[]): RegisterArgs {
       case '--name':
         result.name = args[++i] || '';
         break;
-      case '--trigger':
-        result.trigger = args[++i] || '';
-        break;
       case '--folder':
         result.folder = args[++i] || '';
         break;
@@ -51,7 +46,7 @@ function parseArgs(args: string[]): RegisterArgs {
         result.requiresTrigger = false;
         break;
       case '--assistant-name':
-        result.assistantName = args[++i] || 'Andy';
+        result.assistantName = args[++i] || 'AI Assistant';
         break;
     }
   }
@@ -63,7 +58,7 @@ export async function run(args: string[]): Promise<void> {
   const projectRoot = process.cwd();
   const parsed = parseArgs(args);
 
-  if (!parsed.jid || !parsed.name || !parsed.trigger || !parsed.folder) {
+  if (!parsed.jid || !parsed.name || !parsed.folder) {
     emitStatus('REGISTER_CHANNEL', {
       STATUS: 'failed',
       ERROR: 'missing_required_args',
@@ -92,12 +87,11 @@ export async function run(args: string[]): Promise<void> {
   const requiresTriggerInt = parsed.requiresTrigger ? 1 : 0;
 
   const db = new Database(dbPath);
-  // Ensure schema exists
+  // Ensure schema exists (matches src/db.ts definition)
   db.exec(`CREATE TABLE IF NOT EXISTS registered_groups (
     jid TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     folder TEXT NOT NULL UNIQUE,
-    trigger_pattern TEXT NOT NULL,
     added_at TEXT NOT NULL,
     container_config TEXT,
     requires_trigger INTEGER DEFAULT 1
@@ -105,13 +99,12 @@ export async function run(args: string[]): Promise<void> {
 
   db.prepare(
     `INSERT OR REPLACE INTO registered_groups
-     (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger)
-     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+     (jid, name, folder, added_at, container_config, requires_trigger)
+     VALUES (?, ?, ?, ?, NULL, ?)`,
   ).run(
     parsed.jid,
     parsed.name,
     parsed.folder,
-    parsed.trigger,
     timestamp,
     requiresTriggerInt,
   );
@@ -120,15 +113,28 @@ export async function run(args: string[]): Promise<void> {
   logger.info('Wrote registration to SQLite');
 
   // Create group folders
-  fs.mkdirSync(path.join(projectRoot, 'groups', parsed.folder, 'logs'), {
+  const groupDir = path.join(projectRoot, 'groups', parsed.folder);
+  fs.mkdirSync(path.join(groupDir, 'logs'), {
     recursive: true,
   });
 
+  // Create CLAUDE.md for new group based on global template
+  const groupClaudeMd = path.join(groupDir, 'CLAUDE.md');
+  const globalClaudeMd = path.join(projectRoot, 'groups', 'global', 'CLAUDE.md');
+  if (!fs.existsSync(groupClaudeMd) && fs.existsSync(globalClaudeMd)) {
+    let template = fs.readFileSync(globalClaudeMd, 'utf-8');
+    // Replace assistant name in template
+    template = template.replace(/^# AI Assistant$/m, `# ${parsed.assistantName}`);
+    template = template.replace(/You are AI Assistant/g, `You are ${parsed.assistantName}`);
+    fs.writeFileSync(groupClaudeMd, template);
+    logger.info({ file: groupClaudeMd }, 'Created CLAUDE.md for new group');
+  }
+
   // Update assistant name in CLAUDE.md files if different from default
   let nameUpdated = false;
-  if (parsed.assistantName !== 'Andy') {
+  if (parsed.assistantName !== 'AI Assistant') {
     logger.info(
-      { from: 'Andy', to: parsed.assistantName },
+      { from: 'AI Assistant', to: parsed.assistantName },
       'Updating assistant name',
     );
 
@@ -140,9 +146,9 @@ export async function run(args: string[]): Promise<void> {
     for (const mdFile of mdFiles) {
       if (fs.existsSync(mdFile)) {
         let content = fs.readFileSync(mdFile, 'utf-8');
-        content = content.replace(/^# Andy$/m, `# ${parsed.assistantName}`);
+        content = content.replace(/^# AI Assistant$/m, `# ${parsed.assistantName}`);
         content = content.replace(
-          /You are Andy/g,
+          /You are AI Assistant/g,
           `You are ${parsed.assistantName}`,
         );
         fs.writeFileSync(mdFile, content);
@@ -174,7 +180,6 @@ export async function run(args: string[]): Promise<void> {
     JID: parsed.jid,
     NAME: parsed.name,
     FOLDER: parsed.folder,
-    TRIGGER: parsed.trigger,
     REQUIRES_TRIGGER: parsed.requiresTrigger,
     ASSISTANT_NAME: parsed.assistantName,
     NAME_UPDATED: nameUpdated,

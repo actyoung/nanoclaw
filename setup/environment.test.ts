@@ -26,7 +26,6 @@ describe('registered groups DB query', () => {
       jid TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       folder TEXT NOT NULL UNIQUE,
-      trigger_pattern TEXT NOT NULL,
       added_at TEXT NOT NULL,
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
@@ -42,25 +41,23 @@ describe('registered groups DB query', () => {
 
   it('returns correct count after inserts', () => {
     db.prepare(
-      `INSERT INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO registered_groups (jid, name, folder, added_at, requires_trigger)
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(
       '123@g.us',
       'Group 1',
       'group-1',
-      '@Andy',
       '2024-01-01T00:00:00.000Z',
       1,
     );
 
     db.prepare(
-      `INSERT INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO registered_groups (jid, name, folder, added_at, requires_trigger)
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(
       '456@g.us',
       'Group 2',
       'group-2',
-      '@Andy',
       '2024-01-01T00:00:00.000Z',
       1,
     );
