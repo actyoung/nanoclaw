@@ -180,8 +180,12 @@ export class FeishuChannel implements Channel {
       });
 
       logger.info(
-        { openId: openId.slice(0, 8), code: response.code, data: response.data },
-        'User API response'
+        {
+          openId: openId.slice(0, 8),
+          code: response.code,
+          data: response.data,
+        },
+        'User API response',
       );
 
       if (response.code === 0 && response.data?.user?.name) {
@@ -190,7 +194,10 @@ export class FeishuChannel implements Channel {
         return name;
       }
     } catch (err) {
-      logger.warn({ err, openId: openId.slice(0, 8) }, 'Failed to fetch user name');
+      logger.warn(
+        { err, openId: openId.slice(0, 8) },
+        'Failed to fetch user name',
+      );
     }
     return null;
   }
@@ -436,7 +443,9 @@ export class FeishuChannel implements Channel {
     const senderId = sender.sender_id.open_id;
 
     // 优先从 mentions 中获取发送者名字（如果发送者 @ 了自己）
-    let senderName = message.mentions?.find((m) => m.id.open_id === senderId)?.name;
+    let senderName = message.mentions?.find(
+      (m) => m.id.open_id === senderId,
+    )?.name;
 
     // 如果 mentions 中没有，尝试从缓存或 API 获取
     if (!senderName) {
@@ -447,7 +456,10 @@ export class FeishuChannel implements Channel {
         // 异步获取用户名字，不阻塞消息处理
         this.fetchUserName(senderId).then((name) => {
           if (name) {
-            logger.debug({ openId: senderId.slice(0, 8), name }, 'Fetched user name');
+            logger.debug(
+              { openId: senderId.slice(0, 8), name },
+              'Fetched user name',
+            );
           }
         });
         // 临时使用 open_id 前 8 位
