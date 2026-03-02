@@ -55,6 +55,9 @@ export class FeishuChannel implements Channel {
   private flushing = false;
   private botOpenId: string | null = null;
 
+  // 用户名字缓存 (open_id -> name)
+  private userNameCache: Map<string, string> = new Map();
+
   // 心跳检测相关
   private lastMessageTime = Date.now();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -158,15 +161,57 @@ export class FeishuChannel implements Channel {
   }
 
   /**
+   * 获取用户名字，优先从缓存中获取，否则调用 API
+   */
+  private async fetchUserName(openId: string): Promise<string | null> {
+    // 先检查缓存
+    if (this.userNameCache.has(openId)) {
+      return this.userNameCache.get(openId)!;
+    }
+
+    try {
+      const response = await this.client.contact.v3.user.get({
+        params: {
+          user_id_type: 'open_id',
+        },
+        path: {
+          user_id: openId,
+        },
+      });
+
+      logger.info(
+        { openId: openId.slice(0, 8), code: response.code, data: response.data },
+        'User API response'
+      );
+
+      if (response.code === 0 && response.data?.user?.name) {
+        const name = response.data.user.name;
+        this.userNameCache.set(openId, name);
+        return name;
+      }
+    } catch (err) {
+      logger.warn({ err, openId: openId.slice(0, 8) }, 'Failed to fetch user name');
+    }
+    return null;
+  }
+
+  /**
    * 检查消息是否 @ 了机器人
-   * 如果无法获取 botOpenId，则通过 mentions 名称匹配
+   * 通过比对 mention 的 open_id 和 botOpenId 来判断
+   * 同时支持 @所有人 (@_all) 触发
    */
   private isBotMentioned(message: FeishuMessageEvent['message']): boolean {
+    // 检查是否有 @所有人
+    const parsedContent = JSON.parse(message.content || '{}');
+    if (parsedContent.text?.includes('@_all')) {
+      return true;
+    }
+
     if (!message.mentions || message.mentions.length === 0) {
       return false;
     }
 
-    // 如果已知 botOpenId，直接匹配 open_id
+    // 如果已知 botOpenId，检查是否有 mention 的 open_id 匹配
     if (this.botOpenId) {
       return message.mentions.some((m) => m.id.open_id === this.botOpenId);
     }
@@ -389,9 +434,26 @@ export class FeishuChannel implements Channel {
 
     // 获取发送者信息
     const senderId = sender.sender_id.open_id;
-    const senderName =
-      message.mentions?.find((m) => m.id.open_id === senderId)?.name ||
-      senderId.slice(0, 8);
+
+    // 优先从 mentions 中获取发送者名字（如果发送者 @ 了自己）
+    let senderName = message.mentions?.find((m) => m.id.open_id === senderId)?.name;
+
+    // 如果 mentions 中没有，尝试从缓存或 API 获取
+    if (!senderName) {
+      const cachedName = this.userNameCache.get(senderId);
+      if (cachedName) {
+        senderName = cachedName;
+      } else {
+        // 异步获取用户名字，不阻塞消息处理
+        this.fetchUserName(senderId).then((name) => {
+          if (name) {
+            logger.debug({ openId: senderId.slice(0, 8), name }, 'Fetched user name');
+          }
+        });
+        // 临时使用 open_id 前 8 位
+        senderName = senderId.slice(0, 8);
+      }
+    }
 
     // 检查是否是机器人消息（通过 open_id 匹配）
     const isFromMe = senderId === this.botOpenId;
@@ -400,28 +462,62 @@ export class FeishuChannel implements Channel {
     // 检查是否 @ 了机器人（用于触发检测）
     const isMentioned = this.isBotMentioned(message);
 
+    // 将所有 @_user_X 替换为实际的 @名称，如果是已知机器人则添加标记
+    let processedContent = content;
+
+    // 替换 @_all 为 @所有人
+    processedContent = processedContent.replaceAll('@_all', '@所有人');
+
+    if (message.mentions && message.mentions.length > 0) {
+      logger.info(
+        {
+          mentions: message.mentions.map((m) => ({
+            key: m.key,
+            name: m.name,
+            open_id: m.id.open_id.slice(0, 8) + '...',
+          })),
+        },
+        'Mentions detail for replacement',
+      );
+
+      for (const mention of message.mentions) {
+        const isOtherBot = mention.id.open_id !== this.botOpenId;
+
+        let displayName = mention.name;
+        if (isOtherBot) {
+          displayName = `${mention.name}[机器人]`;
+        }
+
+        processedContent = processedContent.replaceAll(
+          mention.key,
+          `@${displayName}`,
+        );
+      }
+    }
+
+    // 获取机器人名称用于日志
+    const botMention = message.mentions?.find(
+      (m) => m.id.open_id === this.botOpenId,
+    );
+    const botName = botMention?.name || 'Bot';
+
     const newMessage: NewMessage = {
       id: message.message_id,
       chat_jid: chatJid,
       sender: senderId,
       sender_name: senderName,
-      content,
+      content: processedContent,
       timestamp,
       is_from_me: isFromMe,
       is_bot_message: isBotMessage,
       is_mentioned: isMentioned,
     };
 
-    // 动态获取机器人名称用于日志
-    const botName =
-      message.mentions?.find((m) => m.id.open_id === this.botOpenId)?.name ||
-      'Bot';
-
     logger.info(
       {
         chatJid,
         sender: senderName,
-        content: content.slice(0, 100),
+        content: processedContent.slice(0, 100),
         isMentioned,
         botName,
       },
