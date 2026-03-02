@@ -50,6 +50,11 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
+  /**
+   * Whether the message explicitly mentions/@ the bot/agent.
+   * Used for trigger detection in group chats.
+   */
+  is_mentioned?: boolean;
 }
 
 export interface ScheduledTask {

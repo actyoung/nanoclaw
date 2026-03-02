@@ -3,7 +3,6 @@ import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
 import {
-  ASSISTANT_NAME,
   MAIN_GROUP_FOLDER,
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
@@ -142,7 +141,6 @@ async function runTask(
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
-        assistantName: ASSISTANT_NAME,
       },
       (proc, containerName) =>
         deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),

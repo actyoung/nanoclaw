@@ -106,7 +106,7 @@ npm start
 Once the bot is added to groups and messages have been received, register the groups:
 
 ```bash
-npm run setup -- --step register --jid feishu:chat_id --name "Group Name" --trigger "@Andy" --folder main
+npm run setup -- --step register --jid feishu:chat_id --name "Group Name" --folder main
 ```
 
 To find the chat ID, check the logs or database after the bot receives a message in the group.

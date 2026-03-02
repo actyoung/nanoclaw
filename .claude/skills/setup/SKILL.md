@@ -107,14 +107,12 @@ Then run: `npx tsx setup/index.ts --step feishu-auth`
 
 **If failed:** INVALID_CREDENTIALS → re-check App ID/Secret. NETWORK_ERROR → retry.
 
-## 6. Configure Trigger and Channel Type
+## 6. Configure Channel Type
 
-AskUserQuestion: Trigger word? (default: @Andy) → AskUserQuestion: Main channel type?
+AskUserQuestion: Main channel type?
 
-**Personal chat:** Direct message with the bot
-**Group chat:** Group with bot added
-
-**Note:** Feishu bots can be added to groups or used in direct messages. The bot will respond to trigger words in any chat where it's a member.
+**Personal chat:** Direct message with the bot (no trigger needed)
+**Group chat:** Group with bot added (triggered by @mention)
 
 ## 7. Discover and Select Chat
 
@@ -129,9 +127,7 @@ The JID format is: `feishu:oc_xxxxxxxxxxxxxxxx` (for groups) or `feishu:ou_xxxxx
 
 ## 8. Register Channel
 
-Run `npx tsx setup/index.ts --step register -- --jid "feishu:CHAT_ID" --name "main" --trigger "@TriggerWord" --folder "main"` plus `--no-trigger-required` if private chat, `--assistant-name "Name"` if not Andy.
-
-**Note:** For private chats (p2p), use `--no-trigger-required` since the bot only sees direct messages to it.
+Run `npx tsx setup/index.ts --step register -- --jid "feishu:CHAT_ID" --name "main" --folder "main"` plus `--no-trigger-required` if private chat (the bot only sees direct messages to it).
 
 ## 9. Mount Allowlist
 
@@ -190,7 +186,7 @@ Tell user to test: send a message in their registered chat. Show: `tail -f logs/
 
 **Container agent fails ("Claude Code process exited with code 1"):** Ensure the container runtime is running — `open -a Docker` (macOS Docker), `container system start` (Apple Container), or `sudo systemctl start docker` (Linux). Check container logs in `groups/main/logs/container-*.log`.
 
-**No response to messages:** Check trigger pattern. Main channel doesn't need prefix. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/nanoclaw.log`. Ensure bot is added to the group and has permission to read/send messages.
+**No response to messages:** Check that the bot was @mentioned in group chats. Main channel and private chats don't need @mention. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/nanoclaw.log`. Ensure bot is added to the group and has permission to read/send messages.
 
 **Feishu bot not receiving messages:**
 - Verify Feishu app is published (Versions & Releases)

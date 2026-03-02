@@ -7,7 +7,7 @@ import {
   RegisteredGroup,
   NewMessage,
 } from '../types.js';
-import { FEISHU_APP_ID, FEISHU_APP_SECRET, ASSISTANT_NAME } from '../config.js';
+import { FEISHU_APP_ID, FEISHU_APP_SECRET } from '../config.js';
 
 export interface FeishuChannelOpts {
   onMessage: OnInboundMessage;
@@ -55,6 +55,12 @@ export class FeishuChannel implements Channel {
   private flushing = false;
   private botOpenId: string | null = null;
 
+  // 心跳检测相关
+  private lastMessageTime = Date.now();
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly HEARTBEAT_INTERVAL_MS = 30_000; // 30秒检查一次
+  private readonly HEARTBEAT_TIMEOUT_MS = 5 * 60_000; // 5分钟超时
+
   private opts: FeishuChannelOpts;
 
   constructor(opts: FeishuChannelOpts) {
@@ -92,8 +98,82 @@ export class FeishuChannel implements Channel {
   }
 
   private async fetchBotInfo(): Promise<void> {
-    // Skip bot info fetch for now - SDK API may vary
-    logger.info('Feishu bot info skipped (SDK compatibility)');
+    try {
+      // 使用原始 HTTP 获取 tenant access token
+      const tokenRes = await fetch(
+        'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            app_id: FEISHU_APP_ID,
+            app_secret: FEISHU_APP_SECRET,
+          }),
+        },
+      );
+
+      const tokenData = (await tokenRes.json()) as {
+        code: number;
+        tenant_access_token?: string;
+      };
+
+      if (tokenData.code !== 0 || !tokenData.tenant_access_token) {
+        logger.warn(
+          { code: tokenData.code },
+          'Failed to get tenant access token',
+        );
+        return;
+      }
+
+      // 获取机器人信息
+      const botRes = await fetch(
+        'https://open.feishu.cn/open-apis/bot/v3/info',
+        {
+          headers: {
+            Authorization: `Bearer ${tokenData.tenant_access_token}`,
+          },
+        },
+      );
+
+      const botData = (await botRes.json()) as {
+        code: number;
+        bot?: { open_id: string; app_name: string };
+      };
+
+      if (botData.code === 0 && botData.bot?.open_id) {
+        this.botOpenId = botData.bot.open_id;
+        logger.info(
+          { botOpenId: this.botOpenId, botName: botData.bot.app_name },
+          'Feishu bot info fetched successfully',
+        );
+      } else {
+        logger.warn({ code: botData.code }, 'Failed to fetch bot info');
+      }
+    } catch (err) {
+      logger.warn(
+        { err },
+        'Error fetching bot info, will retry on next message',
+      );
+    }
+  }
+
+  /**
+   * 检查消息是否 @ 了机器人
+   * 如果无法获取 botOpenId，则通过 mentions 名称匹配
+   */
+  private isBotMentioned(message: FeishuMessageEvent['message']): boolean {
+    if (!message.mentions || message.mentions.length === 0) {
+      return false;
+    }
+
+    // 如果已知 botOpenId，直接匹配 open_id
+    if (this.botOpenId) {
+      return message.mentions.some((m) => m.id.open_id === this.botOpenId);
+    }
+
+    // Fallback: if we don't know botOpenId yet, assume any mention might be us
+    // This will be refined once botOpenId is fetched
+    return true;
   }
 
   private startWebSocket(): void {
@@ -106,6 +186,7 @@ export class FeishuChannel implements Channel {
         const typedData = data as { event?: { type?: string } };
         if (typedData.event?.type === 'connect') {
           this.connected = true;
+          this.updateLastMessageTime(); // 连接成功时更新时间
           logger.info('Feishu WebSocket connected');
           this.flushOutgoingQueue().catch((err) =>
             logger.error({ err }, 'Failed to flush outgoing queue'),
@@ -134,9 +215,112 @@ export class FeishuChannel implements Channel {
       // 如果收到了消息，说明连接成功了
       this.connected = true;
     }, 5000);
+
+    // 启动心跳检测
+    this.startHeartbeat();
+  }
+
+  private startHeartbeat(): void {
+    // 避免重复启动心跳
+    if (this.heartbeatInterval) {
+      return;
+    }
+
+    this.heartbeatInterval = setInterval(() => {
+      this.checkConnectionHealth();
+    }, this.HEARTBEAT_INTERVAL_MS);
+
+    logger.info(
+      {
+        intervalMs: this.HEARTBEAT_INTERVAL_MS,
+        timeoutMs: this.HEARTBEAT_TIMEOUT_MS,
+      },
+      'WebSocket heartbeat monitoring started',
+    );
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+      logger.info('WebSocket heartbeat monitoring stopped');
+    }
+  }
+
+  private checkConnectionHealth(): void {
+    const now = Date.now();
+    const timeSinceLastMessage = now - this.lastMessageTime;
+    const timeoutThreshold = this.HEARTBEAT_TIMEOUT_MS;
+
+    // 记录健康状态（每5分钟记录一次正常状态，避免日志过多）
+    if (timeSinceLastMessage < timeoutThreshold) {
+      const minutesSinceLastMessage = Math.floor(timeSinceLastMessage / 60_000);
+      if (minutesSinceLastMessage > 0 && minutesSinceLastMessage % 5 === 0) {
+        logger.info(
+          {
+            timeSinceLastMessageMs: timeSinceLastMessage,
+            connected: this.connected,
+          },
+          'WebSocket heartbeat: connection healthy',
+        );
+      }
+      return;
+    }
+
+    // 连接超时，需要重连
+    logger.warn(
+      {
+        timeSinceLastMessageMs: timeSinceLastMessage,
+        timeoutMs: timeoutThreshold,
+      },
+      'WebSocket heartbeat timeout - no message received for too long, reconnecting...',
+    );
+
+    // 标记为断开连接
+    this.connected = false;
+
+    // 尝试重新连接
+    this.reconnect();
+  }
+
+  private reconnect(): void {
+    try {
+      logger.info('Attempting to reconnect WebSocket...');
+
+      // 先停止心跳，避免重复
+      this.stopHeartbeat();
+
+      // 停止现有客户端（如果可能）
+      try {
+        // @ts-expect-error - SDK 类型定义不完整，但实际有此方法
+        this.wsClient?.stop?.();
+      } catch (err) {
+        logger.debug(
+          { err },
+          'Error stopping WebSocket client (expected if already disconnected)',
+        );
+      }
+
+      // 重置最后消息时间，给新连接一个宽限期
+      this.lastMessageTime = Date.now();
+
+      // 重新启动 WebSocket
+      this.startWebSocket();
+
+      logger.info('WebSocket reconnection initiated');
+    } catch (err) {
+      logger.error({ err }, 'Failed to reconnect WebSocket');
+    }
+  }
+
+  private updateLastMessageTime(): void {
+    this.lastMessageTime = Date.now();
   }
 
   private async handleMessage(data: FeishuMessageEvent): Promise<void> {
+    // 更新最后消息时间（心跳检测用）
+    this.updateLastMessageTime();
+
     // 添加调试日志
     logger.info(
       { eventType: 'im.message.receive_v1', data },
@@ -163,7 +347,7 @@ export class FeishuChannel implements Channel {
         { chatJid, chatId, chatType },
         'Received message from unregistered Feishu chat. To register, run: npm run setup -- --step register --jid "' +
           chatJid +
-          '" --name "My Group" --trigger "@Andy" --folder main',
+          '" --name "main" --folder main',
       );
       return;
     }
@@ -189,9 +373,12 @@ export class FeishuChannel implements Channel {
       message.mentions?.find((m) => m.id.open_id === senderId)?.name ||
       senderId.slice(0, 8);
 
-    // 检查是否是机器人消息
+    // 检查是否是机器人消息（通过 open_id 匹配）
     const isFromMe = senderId === this.botOpenId;
-    const isBotMessage = isFromMe || content.startsWith(`${ASSISTANT_NAME}:`);
+    const isBotMessage = isFromMe;
+
+    // 检查是否 @ 了机器人（用于触发检测）
+    const isMentioned = this.isBotMentioned(message);
 
     const newMessage: NewMessage = {
       id: message.message_id,
@@ -202,11 +389,23 @@ export class FeishuChannel implements Channel {
       timestamp,
       is_from_me: isFromMe,
       is_bot_message: isBotMessage,
+      is_mentioned: isMentioned,
     };
 
+    // 动态获取机器人名称用于日志
+    const botName =
+      message.mentions?.find((m) => m.id.open_id === this.botOpenId)?.name ||
+      'Bot';
+
     logger.info(
-      { chatJid, sender: senderName, content: content.slice(0, 100) },
-      'Feishu message received',
+      {
+        chatJid,
+        sender: senderName,
+        content: content.slice(0, 100),
+        isMentioned,
+        botName,
+      },
+      `Feishu message received${isMentioned ? ` (triggered via @${botName})` : ''}`,
     );
 
     this.opts.onMessage(chatJid, newMessage);
@@ -216,11 +415,8 @@ export class FeishuChannel implements Channel {
     // 从 feishu:chatId 格式提取 chatId
     const chatId = jid.startsWith('feishu:') ? jid.slice(7) : jid;
 
-    // 添加机器人名称前缀
-    const prefixed = `${ASSISTANT_NAME}: ${text}`;
-
     if (!this.connected) {
-      this.outgoingQueue.push({ chatId, text: prefixed });
+      this.outgoingQueue.push({ chatId, text });
       logger.info(
         { chatId, queueSize: this.outgoingQueue.length },
         'Feishu disconnected, message queued',
@@ -230,21 +426,21 @@ export class FeishuChannel implements Channel {
 
     try {
       // 自动识别是否使用卡片消息
-      if (this.shouldUseCardMessage(prefixed)) {
-        await this.sendCardMessage(chatId, prefixed);
+      if (this.shouldUseCardMessage(text)) {
+        await this.sendCardMessage(chatId, text);
         logger.info(
-          { chatId, length: prefixed.length },
+          { chatId, length: text.length },
           'Feishu card message sent',
         );
       } else {
-        await this.sendFeishuMessage(chatId, prefixed);
+        await this.sendFeishuMessage(chatId, text);
         logger.info(
-          { chatId, length: prefixed.length },
+          { chatId, length: text.length },
           'Feishu text message sent',
         );
       }
     } catch (err) {
-      this.outgoingQueue.push({ chatId, text: prefixed });
+      this.outgoingQueue.push({ chatId, text });
       logger.warn(
         { chatId, err, queueSize: this.outgoingQueue.length },
         'Failed to send Feishu message, queued',
@@ -416,7 +612,7 @@ export class FeishuChannel implements Channel {
       header: {
         title: {
           tag: 'plain_text',
-          content: `${ASSISTANT_NAME} 回复`,
+          content: '回复',
         },
         template: 'blue',
       },
@@ -445,6 +641,10 @@ export class FeishuChannel implements Channel {
 
   async disconnect(): Promise<void> {
     this.connected = false;
+
+    // 清理心跳检测
+    this.stopHeartbeat();
+
     // WebSocket client will auto-reconnect, no explicit stop needed
   }
 

@@ -56,7 +56,6 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
     );
     expect(messages).toHaveLength(1);
     expect(messages[0].id).toBe('msg-1');
@@ -80,7 +79,6 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
     );
     expect(messages).toHaveLength(0);
   });
@@ -102,7 +100,6 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
     );
     expect(messages).toHaveLength(1);
   });
@@ -131,7 +128,6 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'feishu:oc_group',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
     );
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe('updated');
@@ -180,20 +176,26 @@ describe('getMessagesSince', () => {
   });
 
   it('returns messages after the given timestamp', () => {
-    const msgs = getMessagesSince('feishu:oc_group', '2024-01-01T00:00:02.000Z', 'Andy');
+    const msgs = getMessagesSince(
+      'feishu:oc_group',
+      '2024-01-01T00:00:02.000Z',
+    );
     // Should exclude m1, m2 (before/at timestamp), m3 (bot message)
     expect(msgs).toHaveLength(1);
     expect(msgs[0].content).toBe('third');
   });
 
   it('excludes bot messages via is_bot_message flag', () => {
-    const msgs = getMessagesSince('feishu:oc_group', '2024-01-01T00:00:00.000Z', 'Andy');
+    const msgs = getMessagesSince(
+      'feishu:oc_group',
+      '2024-01-01T00:00:00.000Z',
+    );
     const botMsgs = msgs.filter((m) => m.content === 'bot reply');
     expect(botMsgs).toHaveLength(0);
   });
 
   it('returns all non-bot messages when sinceTimestamp is empty', () => {
-    const msgs = getMessagesSince('feishu:oc_group', '', 'Andy');
+    const msgs = getMessagesSince('feishu:oc_group', '');
     // 3 user messages (bot message excluded)
     expect(msgs).toHaveLength(3);
   });
@@ -208,7 +210,10 @@ describe('getMessagesSince', () => {
       content: 'Andy: old bot reply',
       timestamp: '2024-01-01T00:00:05.000Z',
     });
-    const msgs = getMessagesSince('feishu:oc_group', '2024-01-01T00:00:04.000Z', 'Andy');
+    const msgs = getMessagesSince(
+      'feishu:oc_group',
+      '2024-01-01T00:00:04.000Z',
+    );
     expect(msgs).toHaveLength(0);
   });
 });
@@ -259,7 +264,6 @@ describe('getNewMessages', () => {
     const { messages, newTimestamp } = getNewMessages(
       ['feishu:oc_group1', 'feishu:oc_group2'],
       '2024-01-01T00:00:00.000Z',
-      'Andy',
     );
     // Excludes bot message, returns 3 user messages
     expect(messages).toHaveLength(3);
@@ -270,7 +274,6 @@ describe('getNewMessages', () => {
     const { messages } = getNewMessages(
       ['feishu:oc_group1', 'feishu:oc_group2'],
       '2024-01-01T00:00:02.000Z',
-      'Andy',
     );
     // Only g1 msg2 (after ts, not bot)
     expect(messages).toHaveLength(1);
@@ -278,7 +281,7 @@ describe('getNewMessages', () => {
   });
 
   it('returns empty for no registered groups', () => {
-    const { messages, newTimestamp } = getNewMessages([], '', 'Andy');
+    const { messages, newTimestamp } = getNewMessages([], '');
     expect(messages).toHaveLength(0);
     expect(newTimestamp).toBe('');
   });
