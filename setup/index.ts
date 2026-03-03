@@ -11,7 +11,6 @@ const STEPS: Record<
 > = {
   environment: () => import('./environment.js'),
   container: () => import('./container.js'),
-  'feishu-auth': () => import('./feishu-auth.js'),
   groups: () => import('./groups.js'),
   register: () => import('./register.js'),
   mounts: () => import('./mounts.js'),

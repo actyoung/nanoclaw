@@ -246,13 +246,13 @@ server.tool(
 
 server.tool(
   'register_group',
-  `Register a new Feishu group so the agent can respond to messages there. Main group only.
+  `Register a new chat/group so the agent can respond to messages there. Main group only.
 
-Use available_groups.json to find the JID for a group. The folder name should be lowercase with hyphens (e.g., "family-chat").`,
+Use available_groups.json to find the JID for a group. The folder name must be channel-prefixed: "{channel}_{group-name}" (e.g., "feishu_family-chat", "telegram_dev-team", "discord_general"). Use lowercase with hyphens for the group name part.`,
   {
-    jid: z.string().describe('The Feishu JID (e.g., "feishu:oc_xxxxxxxxxxxxxxxx")'),
+    jid: z.string().describe('The chat JID (e.g., "120363336345536173@g.us", "tg:-1001234567890", "dc:1234567890123456")'),
     name: z.string().describe('Display name for the group'),
-    folder: z.string().describe('Folder name for group files (lowercase, hyphens, e.g., "family-chat")'),
+    folder: z.string().describe('Channel-prefixed folder name (e.g., "feishu_family-chat", "telegram_dev-team")'),
     trigger: z.string().describe('Trigger word (e.g., "@Andy")'),
   },
   async (args) => {

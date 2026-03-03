@@ -8,6 +8,7 @@ import {
   NewMessage,
 } from '../types.js';
 import { FEISHU_APP_ID, FEISHU_APP_SECRET } from '../config.js';
+import { registerChannel, ChannelOpts } from './registry.js';
 
 export interface FeishuChannelOpts {
   onMessage: OnInboundMessage;
@@ -54,6 +55,7 @@ export class FeishuChannel implements Channel {
   private outgoingQueue: Array<{ chatId: string; text: string }> = [];
   private flushing = false;
   private botOpenId: string | null = null;
+  private botName: string | null = null;
 
   // 用户名字缓存 (open_id -> name)
   private userNameCache: Map<string, string> = new Map();
@@ -145,8 +147,9 @@ export class FeishuChannel implements Channel {
 
       if (botData.code === 0 && botData.bot?.open_id) {
         this.botOpenId = botData.bot.open_id;
+        this.botName = botData.bot.app_name;
         logger.info(
-          { botOpenId: this.botOpenId, botName: botData.bot.app_name },
+          { botOpenId: this.botOpenId, botName: this.botName },
           'Feishu bot info fetched successfully',
         );
       } else {
@@ -782,6 +785,13 @@ export class FeishuChannel implements Channel {
   }
 
   /**
+   * 获取机器人在飞书上的显示名称
+   */
+  getBotName(): string | null {
+    return this.botName;
+  }
+
+  /**
    * 同步群组元数据（飞书版本）
    * 获取用户参与的群组列表
    */
@@ -839,3 +849,12 @@ export class FeishuChannel implements Channel {
     }
   }
 }
+
+// Self-register the Feishu channel
+registerChannel('feishu', (opts: ChannelOpts) => {
+  if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
+    logger.debug('Feishu: FEISHU_APP_ID or FEISHU_APP_SECRET not set, skipping');
+    return null;
+  }
+  return new FeishuChannel(opts);
+});

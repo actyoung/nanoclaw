@@ -21,10 +21,10 @@ describe('voice-transcription skill package', () => {
     expect(fs.existsSync(transcriptionFile)).toBe(true);
 
     const content = fs.readFileSync(transcriptionFile, 'utf-8');
-    expect(content).toContain('transcribeAudioMessage');
+    expect(content).toContain('transcribeFeishuVoiceMessage');
     expect(content).toContain('isVoiceMessage');
     expect(content).toContain('transcribeWithOpenAI');
-    expect(content).toContain('downloadMediaMessage');
+    expect(content).toContain('downloadFeishuAudio');
     expect(content).toContain('readEnvFile');
   });
 
@@ -38,7 +38,6 @@ describe('voice-transcription skill package', () => {
 
   it('has intent files for modified files', () => {
     expect(fs.existsSync(path.join(skillDir, 'modify', 'src', 'channels', 'feishu.ts.intent.md'))).toBe(true);
-    expect(fs.existsSync(path.join(skillDir, 'modify', 'src', 'channels', 'feishu.test.ts.intent.md'))).toBe(true);
   });
 
   it('modified feishu.ts preserves core structure', () => {
@@ -57,13 +56,13 @@ describe('voice-transcription skill package', () => {
     expect(content).toContain('async disconnect()');
     expect(content).toContain('async setTyping(');
     expect(content).toContain('async syncGroupMetadata(');
-    expect(content).toContain('private async translateJid(');
     expect(content).toContain('private async flushOutgoingQueue(');
 
     // Core imports preserved
-    expect(content).toContain('ASSISTANT_HAS_OWN_NUMBER');
-    expect(content).toContain('ASSISTANT_NAME');
-    expect(content).toContain('STORE_DIR');
+    expect(content).toContain('Lark');
+    expect(content).toContain('FEISHU_APP_ID');
+    expect(content).toContain('FEISHU_APP_SECRET');
+    expect(content).toContain('registerChannel');
   });
 
   it('modified feishu.ts includes transcription integration', () => {
@@ -73,18 +72,18 @@ describe('voice-transcription skill package', () => {
     );
 
     // Transcription imports
-    expect(content).toContain("import { isVoiceMessage, transcribeAudioMessage } from '../transcription.js'");
+    expect(content).toContain("import {");
+    expect(content).toContain("isVoiceMessage,");
+    expect(content).toContain("transcribeFeishuVoiceMessage,");
 
     // Voice message handling
-    expect(content).toContain('isVoiceMessage(msg)');
-    expect(content).toContain('transcribeAudioMessage(msg, this.sock)');
-    expect(content).toContain('finalContent');
+    expect(content).toContain('isVoiceMessage(message.message_type, message.content)');
+    expect(content).toContain('transcribeFeishuVoiceMessage(');
     expect(content).toContain('[Voice:');
     expect(content).toContain('[Voice Message - transcription unavailable]');
-    expect(content).toContain('[Voice Message - transcription failed]');
   });
 
-  it('modified feishu.test.ts includes transcription mock and tests', () => {
+  it('modified feishu.test.ts includes transcription tests', () => {
     const content = fs.readFileSync(
       path.join(skillDir, 'modify', 'src', 'channels', 'feishu.test.ts'),
       'utf-8',
@@ -93,31 +92,10 @@ describe('voice-transcription skill package', () => {
     // Transcription mock
     expect(content).toContain("vi.mock('../transcription.js'");
     expect(content).toContain('isVoiceMessage');
-    expect(content).toContain('transcribeAudioMessage');
 
     // Voice transcription test cases
-    expect(content).toContain('transcribes voice messages');
-    expect(content).toContain('falls back when transcription returns null');
-    expect(content).toContain('falls back when transcription throws');
-    expect(content).toContain('[Voice: Hello this is a voice message]');
-  });
-
-  it('modified feishu.test.ts preserves all existing test sections', () => {
-    const content = fs.readFileSync(
-      path.join(skillDir, 'modify', 'src', 'channels', 'feishu.test.ts'),
-      'utf-8',
-    );
-
-    // All existing test describe blocks preserved
-    expect(content).toContain("describe('connection lifecycle'");
-    expect(content).toContain("describe('authentication'");
-    expect(content).toContain("describe('reconnection'");
-    expect(content).toContain("describe('message handling'");
-    expect(content).toContain("describe('LID to JID translation'");
-    expect(content).toContain("describe('outgoing message queue'");
-    expect(content).toContain("describe('group metadata sync'");
-    expect(content).toContain("describe('ownsJid'");
-    expect(content).toContain("describe('setTyping'");
-    expect(content).toContain("describe('channel properties'");
+    expect(content).toContain('voice message detection');
+    expect(content).toContain('detects audio message type');
+    expect(content).toContain('returns false for text message type');
   });
 });

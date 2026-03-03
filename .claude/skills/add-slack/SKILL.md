@@ -15,11 +15,7 @@ Read `.nanoclaw/state.yaml`. If `slack` is in `applied_skills`, skip to Phase 3 
 
 ### Ask the user
 
-1. **Mode**: Replace Feishu or add alongside it?
-   - Replace → will set `SLACK_ONLY=true`
-   - Alongside → both channels active (default)
-
-2. **Do they already have a Slack app configured?** If yes, collect the Bot Token and App Token now. If no, we'll create one in Phase 3.
+**Do they already have a Slack app configured?** If yes, collect the Bot Token and App Token now. If no, we'll create one in Phase 3.
 
 ## Phase 2: Apply Code Changes
 
@@ -42,19 +38,16 @@ npx tsx scripts/apply-skill.ts .claude/skills/add-slack
 ```
 
 This deterministically:
-- Adds `src/channels/slack.ts` (SlackChannel class implementing Channel interface)
+
+- Adds `src/channels/slack.ts` (SlackChannel class with self-registration via `registerChannel`)
 - Adds `src/channels/slack.test.ts` (46 unit tests)
-- Three-way merges Slack support into `src/index.ts` (multi-channel support, conditional channel creation)
-- Three-way merges Slack config into `src/config.ts` (SLACK_ONLY export)
-- Three-way merges updated routing tests into `src/routing.test.ts`
+- Appends `import './slack.js'` to the channel barrel file `src/channels/index.ts`
 - Installs the `@slack/bolt` npm dependency
-- Updates `.env.example` with `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_ONLY`
 - Records the application in `.nanoclaw/state.yaml`
 
-If the apply reports merge conflicts, read the intent files:
-- `modify/src/index.ts.intent.md` — what changed and invariants for index.ts
-- `modify/src/config.ts.intent.md` — what changed for config.ts
-- `modify/src/routing.test.ts.intent.md` — what changed for routing tests
+If the apply reports merge conflicts, read the intent file:
+
+- `modify/src/channels/index.ts.intent.md` — what changed and invariants
 
 ### Validate code changes
 
@@ -72,6 +65,7 @@ All tests must pass (including the new slack tests) and build must be clean befo
 If the user doesn't have a Slack app, share [SLACK_SETUP.md](SLACK_SETUP.md) which has step-by-step instructions with screenshots guidance, troubleshooting, and a token reference table.
 
 Quick summary of what's needed:
+
 1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
 2. Enable Socket Mode and generate an App-Level Token (`xapp-...`)
 3. Subscribe to bot events: `message.channels`, `message.groups`, `message.im`
@@ -89,11 +83,7 @@ SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_APP_TOKEN=xapp-your-app-token
 ```
 
-If they chose to replace Feishu:
-
-```bash
-SLACK_ONLY=true
-```
+Channels auto-enable when their credentials are present — no extra configuration needed.
 
 Sync to container environment:
 
@@ -128,24 +118,25 @@ Wait for the user to provide the channel ID.
 
 Use the IPC register flow or register directly. The channel ID, name, and folder name are needed.
 
-For a main channel (responds to all messages, uses the `main` folder):
+For a main channel (responds to all messages):
 
 ```typescript
-registerGroup("slack:<channel-id>", {
-  name: "<channel-name>",
-  folder: "main",
+registerGroup('slack:<channel-id>', {
+  name: '<channel-name>',
+  folder: 'slack_main',
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: false,
+  isMain: true,
 });
 ```
 
 For additional channels (trigger-only):
 
 ```typescript
-registerGroup("slack:<channel-id>", {
-  name: "<channel-name>",
-  folder: "<folder-name>",
+registerGroup('slack:<channel-id>', {
+  name: '<channel-name>',
+  folder: 'slack_<channel-name>',
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: true,
@@ -159,6 +150,7 @@ registerGroup("slack:<channel-id>", {
 Tell the user:
 
 > Send a message in your registered Slack channel:
+>
 > - For main channel: Any message works
 > - For non-main: `@<assistant-name> hello` (using the configured trigger word)
 >
@@ -189,12 +181,14 @@ tail -f logs/nanoclaw.log
 ### Bot not seeing messages in channels
 
 By default, bots only see messages in channels they've been explicitly added to. Make sure to:
+
 1. Add the bot to each channel you want it to monitor
 2. Check the bot has `channels:history` and/or `groups:history` scopes
 
 ### "missing_scope" errors
 
 If the bot logs `missing_scope` errors:
+
 1. Go to **OAuth & Permissions** in your Slack app settings
 2. Add the missing scope listed in the error message
 3. **Reinstall the app** to your workspace — scope changes require reinstallation
@@ -205,6 +199,7 @@ If the bot logs `missing_scope` errors:
 ### Getting channel ID
 
 If the channel ID is hard to find:
+
 - In Slack desktop: right-click channel → **Copy link** → extract the `C...` ID from the URL
 - In Slack web: the URL shows `https://app.slack.com/client/TXXXXXXX/C0123456789`
 - Via API: `curl -s -H "Authorization: Bearer $SLACK_BOT_TOKEN" "https://slack.com/api/conversations.list" | jq '.channels[] | {id, name}'`
@@ -212,10 +207,11 @@ If the channel ID is hard to find:
 ## After Setup
 
 The Slack channel supports:
+
 - **Public channels** — Bot must be added to the channel
 - **Private channels** — Bot must be invited to the channel
 - **Direct messages** — Users can DM the bot directly
-- **Multi-channel** — Can run alongside Feishu (default) or replace it (`SLACK_ONLY=true`)
+- **Multi-channel** — Can run alongside WhatsApp or other channels (auto-enabled by credentials)
 
 ## Known Limitations
 

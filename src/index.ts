@@ -1,8 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 
-import { IDLE_TIMEOUT, MAIN_GROUP_FOLDER, POLL_INTERVAL } from './config.js';
-import { FeishuChannel } from './channels/feishu.js';
+import { IDLE_TIMEOUT, POLL_INTERVAL, TRIGGER_PATTERN } from './config.js';
+import './channels/index.js';
+import {
+  getChannelFactory,
+  getRegisteredChannelNames,
+} from './channels/registry.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -39,13 +43,26 @@ import { logger } from './logger.js';
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
 
+/**
+ * Check if a message has a trigger (dual-mode detection).
+ * 1. First check is_mentioned field (if channel provides it, e.g., Feishu)
+ * 2. Fall back to TRIGGER_PATTERN regex matching on message content
+ */
+function checkMessageTrigger(m: NewMessage): boolean {
+  // If is_mentioned is explicitly true/1, use it (channel-native @mention detection)
+  if (m.is_mentioned === true || m.is_mentioned === 1) {
+    return true;
+  }
+  // Fall back to TRIGGER_PATTERN detection for channels without native @mention support
+  return TRIGGER_PATTERN.test(m.content.trim());
+}
+
 let lastTimestamp = '';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
-let feishu: FeishuChannel;
 const channels: Channel[] = [];
 const queue = new GroupQueue();
 
@@ -134,7 +151,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     return true;
   }
 
-  const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
+  const isMainGroup = group.isMain === true;
 
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
   const missedMessages = getMessagesSince(chatJid, sinceTimestamp);
@@ -142,12 +159,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   if (missedMessages.length === 0) return true;
 
   // For non-main groups, check if trigger is required and present
-  // Only @mention (is_mentioned) triggers the agent
+  // Dual-mode: use is_mentioned if available, fall back to TRIGGER_PATTERN
   if (!isMainGroup && group.requiresTrigger !== false) {
-    const hasTrigger = missedMessages.some(
-      (m) => m.is_mentioned === true || m.is_mentioned === 1,
-    );
-    if (!hasTrigger) return true;
+    const anyMessageHasTrigger = missedMessages.some(checkMessageTrigger);
+    if (!anyMessageHasTrigger) return true;
   }
 
   const prompt = formatMessages(missedMessages);
@@ -241,8 +256,12 @@ async function runAgent(
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
-  const isMain = group.folder === MAIN_GROUP_FOLDER;
+  const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
+
+  // Get the channel for this chat to retrieve bot name
+  const channel = findChannel(channels, chatJid);
+  const assistantName = channel?.getBotName?.() ?? 'AI Assistant';
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
@@ -289,6 +308,7 @@ async function runAgent(
         groupFolder: group.folder,
         chatJid,
         isMain,
+        assistantName,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -357,17 +377,16 @@ async function startMessageLoop(): Promise<void> {
             continue;
           }
 
-          const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
+          const isMainGroup = group.isMain === true;
           const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
 
-          // For non-main groups, only act on @mention trigger messages.
+          // For non-main groups, only act on trigger messages.
+          // Dual-mode: use is_mentioned if available, fall back to TRIGGER_PATTERN.
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
-            const hasTrigger = groupMessages.some(
-              (m) => m.is_mentioned === true || m.is_mentioned === 1,
-            );
-            if (!hasTrigger) continue;
+            const anyMessageHasTrigger = groupMessages.some(checkMessageTrigger);
+            if (!anyMessageHasTrigger) continue;
           }
 
           // Pull all messages since lastAgentTimestamp so non-trigger
@@ -459,10 +478,26 @@ async function main(): Promise<void> {
     registeredGroups: () => registeredGroups,
   };
 
-  // Create and connect channels
-  feishu = new FeishuChannel(channelOpts);
-  channels.push(feishu);
-  await feishu.connect();
+  // Create and connect all registered channels.
+  // Each channel self-registers via the barrel import above.
+  // Factories return null when credentials are missing, so unconfigured channels are skipped.
+  for (const channelName of getRegisteredChannelNames()) {
+    const factory = getChannelFactory(channelName)!;
+    const channel = factory(channelOpts);
+    if (!channel) {
+      logger.warn(
+        { channel: channelName },
+        'Channel installed but credentials missing — skipping. Check .env or re-run the channel skill.',
+      );
+      continue;
+    }
+    channels.push(channel);
+    await channel.connect();
+  }
+  if (channels.length === 0) {
+    logger.fatal('No channels connected');
+    process.exit(1);
+  }
 
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({
@@ -489,8 +524,13 @@ async function main(): Promise<void> {
     },
     registeredGroups: () => registeredGroups,
     registerGroup,
-    syncGroupMetadata: (force) =>
-      feishu?.syncGroupMetadata(force) ?? Promise.resolve(),
+    syncGroups: async (force: boolean) => {
+      await Promise.all(
+        channels
+          .filter((ch) => ch.syncGroups)
+          .map((ch) => ch.syncGroups!(force)),
+      );
+    },
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),

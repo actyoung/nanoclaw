@@ -115,6 +115,19 @@ function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
+  // Add is_main column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE registered_groups ADD COLUMN is_main INTEGER DEFAULT 0`,
+    );
+    // Backfill: existing rows with folder = 'main' are the main group
+    database.exec(
+      `UPDATE registered_groups SET is_main = 1 WHERE folder = 'main'`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
   // Add channel and is_group columns if they don't exist (migration for existing DBs)
   try {
     database.exec(`ALTER TABLE chats ADD COLUMN channel TEXT`);
@@ -139,30 +152,13 @@ function createSchema(database: Database.Database): void {
     /* columns already exist */
   }
 
-  // Remove trigger_pattern column if it exists (migration for existing DBs)
-  // SQLite doesn't support DROP COLUMN, so we need to recreate the table
-  const hasTriggerPattern = database
-    .prepare(
-      `SELECT 1 FROM pragma_table_info('registered_groups') WHERE name = 'trigger_pattern'`,
-    )
-    .get();
-  if (hasTriggerPattern) {
-    logger.info('Migrating registered_groups: removing trigger_pattern column');
-    database.exec(`
-      CREATE TABLE registered_groups_new (
-        jid TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        folder TEXT NOT NULL UNIQUE,
-        added_at TEXT NOT NULL,
-        container_config TEXT,
-        requires_trigger INTEGER DEFAULT 1
-      );
-      INSERT INTO registered_groups_new (jid, name, folder, added_at, container_config, requires_trigger)
-        SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups;
-      DROP TABLE registered_groups;
-      ALTER TABLE registered_groups_new RENAME TO registered_groups;
-    `);
-    logger.info('Migration complete: trigger_pattern column removed');
+  // Add trigger_pattern column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE registered_groups ADD COLUMN trigger_pattern TEXT`,
+    );
+  } catch {
+    /* column already exists */
   }
 }
 
@@ -302,7 +298,7 @@ export function storeMessage(msg: NewMessage): void {
 }
 
 /**
- * Store a message directly (for channels that don't use Baileys proto).
+ * Store a message directly.
  */
 export function storeMessageDirect(msg: {
   id: string;
@@ -558,16 +554,18 @@ export function getRegisteredGroup(
 ): (RegisteredGroup & { jid: string }) | undefined {
   const row = db
     .prepare(
-      'SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups WHERE jid = ?',
+      'SELECT jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main FROM registered_groups WHERE jid = ?',
     )
     .get(jid) as
     | {
         jid: string;
         name: string;
         folder: string;
+        trigger_pattern: string | null;
         added_at: string;
         container_config: string | null;
         requires_trigger: number | null;
+        is_main: number | null;
       }
     | undefined;
   if (!row) return undefined;
@@ -582,12 +580,14 @@ export function getRegisteredGroup(
     jid: row.jid,
     name: row.name,
     folder: row.folder,
+    trigger: row.trigger_pattern ?? undefined,
     added_at: row.added_at,
     containerConfig: row.container_config
       ? JSON.parse(row.container_config)
       : undefined,
     requiresTrigger:
       row.requires_trigger === null ? undefined : row.requires_trigger === 1,
+    isMain: row.is_main === 1 ? true : undefined,
   };
 }
 
@@ -596,30 +596,34 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     throw new Error(`Invalid group folder "${group.folder}" for JID ${jid}`);
   }
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, requires_trigger)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
     group.folder,
+    group.trigger ?? null,
     group.added_at,
     group.containerConfig ? JSON.stringify(group.containerConfig) : null,
     group.requiresTrigger === undefined ? 1 : group.requiresTrigger ? 1 : 0,
+    group.isMain ? 1 : 0,
   );
 }
 
 export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   const rows = db
     .prepare(
-      'SELECT jid, name, folder, added_at, container_config, requires_trigger FROM registered_groups',
+      'SELECT jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main FROM registered_groups',
     )
     .all() as Array<{
     jid: string;
     name: string;
     folder: string;
+    trigger_pattern: string | null;
     added_at: string;
     container_config: string | null;
     requires_trigger: number | null;
+    is_main: number | null;
   }>;
   const result: Record<string, RegisteredGroup> = {};
   for (const row of rows) {
@@ -633,12 +637,14 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     result[row.jid] = {
       name: row.name,
       folder: row.folder,
+      trigger: row.trigger_pattern ?? undefined,
       added_at: row.added_at,
       containerConfig: row.container_config
         ? JSON.parse(row.container_config)
         : undefined,
       requiresTrigger:
         row.requires_trigger === null ? undefined : row.requires_trigger === 1,
+      isMain: row.is_main === 1 ? true : undefined,
     };
   }
   return result;

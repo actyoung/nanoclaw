@@ -24,7 +24,6 @@ export const MOUNT_ALLOWLIST_PATH = path.join(
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
-export const MAIN_GROUP_FOLDER = 'main';
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
@@ -53,3 +52,14 @@ export const FEISHU_APP_ID =
   process.env.FEISHU_APP_ID || envConfig.FEISHU_APP_ID || '';
 export const FEISHU_APP_SECRET =
   process.env.FEISHU_APP_SECRET || envConfig.FEISHU_APP_SECRET || '';
+
+// Assistant name and trigger pattern for message matching
+export const ASSISTANT_NAME =
+  process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'AI Assistant';
+
+// Trigger pattern: matches @assistant_name at the start of message
+// Example: "@AI Assistant hello" or "@AI Assistant: hello"
+export const TRIGGER_PATTERN = new RegExp(
+  `^@?(?:${ASSISTANT_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[:：]?\\s*`,
+  'i',
+);

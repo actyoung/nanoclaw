@@ -1,6 +1,6 @@
-# 虾仁
+# [AI Assistant]
 
-You are 虾仁, a personal assistant. You help with tasks, answer questions, and can schedule reminders.
+You are [AI Assistant], a personal assistant. You help with tasks, answer questions, and can schedule reminders.
 
 ## What You Can Do
 
@@ -119,46 +119,47 @@ sqlite3 /workspace/project/store/messages.db "
 
 ### Registered Groups Config
 
-Groups are registered in `/workspace/project/data/registered_groups.json`:
+Groups are registered in the SQLite `registered_groups` table:
 
 ```json
 {
   "1234567890-1234567890@g.us": {
     "name": "Family Chat",
-    "folder": "family-chat",
-    "trigger": "@Andy",
+    "folder": "feishu_family-chat",
     "added_at": "2024-01-31T12:00:00.000Z"
   }
 }
 ```
 
 Fields:
-- **Key**: The Feishu JID (unique identifier for the chat)
+- **Key**: The chat JID (unique identifier — Feishu, Telegram, Slack, Discord, etc.)
 - **name**: Display name for the group
-- **folder**: Folder name under `groups/` for this group's files and memory
+- **folder**: Channel-prefixed folder name under `groups/` for this group's files and memory
 - **trigger**: The trigger word (usually same as global, but could differ)
 - **requiresTrigger**: Whether `@trigger` prefix is needed (default: `true`). Set to `false` for solo/personal chats where all messages should be processed
+- **isMain**: Whether this is the main control group (elevated privileges, no trigger required)
 - **added_at**: ISO timestamp when registered
 
 ### Trigger Behavior
 
-- **Main group**: No trigger needed — all messages are processed automatically
+- **Main group** (`isMain: true`): No trigger needed — all messages are processed automatically
 - **Groups with `requiresTrigger: false`**: No trigger needed — all messages processed (use for 1-on-1 or solo chats)
 - **Other groups** (default): Messages must start with `@AssistantName` to be processed
 
 ### Adding a Group
 
 1. Query the database to find the group's JID
-2. Read `/workspace/project/data/registered_groups.json`
-3. Add the new group entry with `containerConfig` if needed
-4. Write the updated JSON back
-5. Create the group folder: `/workspace/project/groups/{folder-name}/`
-6. Optionally create an initial `CLAUDE.md` for the group
+2. Use the `register_group` MCP tool with the JID, name, folder, and trigger
+3. Optionally include `containerConfig` for additional mounts
+4. The group folder is created automatically: `/workspace/project/groups/{folder-name}/`
+5. Optionally create an initial `CLAUDE.md` for the group
 
-Example folder name conventions:
-- "Family Chat" → `family-chat`
-- "Work Team" → `work-team`
-- Use lowercase, hyphens instead of spaces
+Folder naming convention — channel prefix with underscore separator:
+- Feishu "Family Chat" → `feishu_family-chat`
+- Telegram "Dev Team" → `telegram_dev-team`
+- Discord "General" → `discord_general`
+- Slack "Engineering" → `slack_engineering`
+- Use lowercase, hyphens for the group name part
 
 #### Adding Additional Directories for a Group
 

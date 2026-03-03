@@ -226,11 +226,21 @@ function readSecrets(): Record<string, string> {
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
+  group?: RegisteredGroup,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
+
+  // Inject agent identity environment variables for multi-agent flexibility
+  if (group) {
+    // Use trigger pattern (without @) as the agent's name for identity recognition
+    const triggerName = group.trigger?.replace(/^@/, '') || group.name;
+    args.push('-e', `AGENT_NAME=${triggerName}`);
+    args.push('-e', `AGENT_FOLDER=${group.folder}`);
+    args.push('-e', `TRIGGER_PATTERN=${group.trigger ?? `@${triggerName}`}`);
+  }
 
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),
@@ -269,7 +279,7 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName);
+  const containerArgs = buildContainerArgs(mounts, containerName, group);
 
   logger.debug(
     {

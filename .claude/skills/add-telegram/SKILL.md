@@ -17,10 +17,6 @@ Read `.nanoclaw/state.yaml`. If `telegram` is in `applied_skills`, skip to Phase
 
 Use `AskUserQuestion` to collect configuration:
 
-AskUserQuestion: Should Telegram replace Feishu or run alongside it?
-- **Replace Feishu** - Telegram will be the only channel (sets TELEGRAM_ONLY=true)
-- **Alongside** - Both Telegram and Feishu channels active
-
 AskUserQuestion: Do you have a Telegram bot token, or do you need to create one?
 
 If they have one, collect it now. If not, we'll create one in Phase 3.
@@ -46,18 +42,17 @@ npx tsx scripts/apply-skill.ts .claude/skills/add-telegram
 ```
 
 This deterministically:
-- Adds `src/channels/telegram.ts` (TelegramChannel class implementing Channel interface)
+
+- Adds `src/channels/telegram.ts` (TelegramChannel class with self-registration via `registerChannel`)
 - Adds `src/channels/telegram.test.ts` (46 unit tests)
-- Three-way merges Telegram support into `src/index.ts` (multi-channel support, findChannel routing)
-- Three-way merges Telegram config into `src/config.ts` (TELEGRAM_BOT_TOKEN, TELEGRAM_ONLY exports)
-- Three-way merges updated routing tests into `src/routing.test.ts`
+- Appends `import './telegram.js'` to the channel barrel file `src/channels/index.ts`
 - Installs the `grammy` npm dependency
-- Updates `.env.example` with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ONLY`
+- Updates `.env.example` with `TELEGRAM_BOT_TOKEN`
 - Records the application in `.nanoclaw/state.yaml`
 
-If the apply reports merge conflicts, read the intent files:
-- `modify/src/index.ts.intent.md` — what changed and invariants for index.ts
-- `modify/src/config.ts.intent.md` — what changed for config.ts
+If the apply reports merge conflicts, read the intent file:
+
+- `modify/src/channels/index.ts.intent.md` — what changed and invariants
 
 ### Validate code changes
 
@@ -92,11 +87,7 @@ Add to `.env`:
 TELEGRAM_BOT_TOKEN=<their-token>
 ```
 
-If they chose to replace Feishu:
-
-```bash
-TELEGRAM_ONLY=true
-```
+Channels auto-enable when their credentials are present — no extra configuration needed.
 
 Sync to container environment:
 
@@ -142,24 +133,25 @@ Wait for the user to provide the chat ID (format: `tg:123456789` or `tg:-1001234
 
 Use the IPC register flow or register directly. The chat ID, name, and folder name are needed.
 
-For a main chat (responds to all messages, uses the `main` folder):
+For a main chat (responds to all messages):
 
 ```typescript
-registerGroup("tg:<chat-id>", {
-  name: "<chat-name>",
-  folder: "main",
+registerGroup('tg:<chat-id>', {
+  name: '<chat-name>',
+  folder: 'telegram_main',
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: false,
+  isMain: true,
 });
 ```
 
 For additional chats (trigger-only):
 
 ```typescript
-registerGroup("tg:<chat-id>", {
-  name: "<chat-name>",
-  folder: "<folder-name>",
+registerGroup('tg:<chat-id>', {
+  name: '<chat-name>',
+  folder: 'telegram_<group-name>',
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: true,
@@ -173,6 +165,7 @@ registerGroup("tg:<chat-id>", {
 Tell the user:
 
 > Send a message to your registered Telegram chat:
+>
 > - For main chat: Any message works
 > - For non-main: `@Andy hello` or @mention the bot
 >
@@ -189,6 +182,7 @@ tail -f logs/nanoclaw.log
 ### Bot not responding
 
 Check:
+
 1. `TELEGRAM_BOT_TOKEN` is set in `.env` AND synced to `data/env/env`
 2. Chat is registered in SQLite (check with: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'tg:%'"`)
 3. For non-main chats: message includes trigger pattern
@@ -197,18 +191,21 @@ Check:
 ### Bot only responds to @mentions in groups
 
 Group Privacy is enabled (default). Fix:
+
 1. `@BotFather` > `/mybots` > select bot > **Bot Settings** > **Group Privacy** > **Turn off**
 2. Remove and re-add the bot to the group (required for the change to take effect)
 
 ### Getting chat ID
 
 If `/chatid` doesn't work:
+
 - Verify token: `curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"`
 - Check bot is started: `tail -f logs/nanoclaw.log`
 
 ## After Setup
 
 If running `npm run dev` while the service is active:
+
 ```bash
 # macOS:
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
@@ -233,11 +230,9 @@ If they say yes, invoke the `/add-telegram-swarm` skill.
 
 To remove Telegram integration:
 
-1. Delete `src/channels/telegram.ts`
-2. Remove `TelegramChannel` import and creation from `src/index.ts`
-3. Remove `channels` array and revert to using `feishu` directly in `processGroupMessages`, scheduler deps, and IPC deps
-4. Revert `getAvailableGroups()` filter to only include `feishu:%` chats
-5. Remove Telegram config (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_ONLY`) from `src/config.ts`
-6. Remove Telegram registrations from SQLite: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE 'tg:%'"`
-7. Uninstall: `npm uninstall grammy`
-8. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart nanoclaw` (Linux)
+1. Delete `src/channels/telegram.ts` and `src/channels/telegram.test.ts`
+2. Remove `import './telegram.js'` from `src/channels/index.ts`
+3. Remove `TELEGRAM_BOT_TOKEN` from `.env`
+4. Remove Telegram registrations from SQLite: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE 'tg:%'"`
+5. Uninstall: `npm uninstall grammy`
+6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart nanoclaw` (Linux)

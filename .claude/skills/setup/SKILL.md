@@ -1,13 +1,13 @@
 ---
 name: setup
-description: Run initial NanoClaw setup. Use when user wants to install dependencies, configure Feishu bot, register their main channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
+description: Run initial NanoClaw setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
 ---
 
 # NanoClaw Setup
 
-Run setup steps automatically. Only pause when user action is required (Feishu bot configuration, secret token setup). Setup uses `bash setup.sh` for bootstrap, then `npx tsx setup/index.ts --step <name>` for all other steps. Steps emit structured status blocks to stdout. Verbose logs go to `logs/setup.log`.
+Run setup steps automatically. Only pause when user action is required (channel authentication, configuration choices). Setup uses `bash setup.sh` for bootstrap, then `npx tsx setup/index.ts --step <name>` for all other steps. Steps emit structured status blocks to stdout. Verbose logs go to `logs/setup.log`.
 
-**Principle:** When something is broken or missing, fix it. Don't tell the user to go fix it themselves unless it genuinely requires their manual action (e.g. creating a Feishu app, pasting a secret token). If a dependency is missing, install it. If a service won't start, diagnose and repair. Ask the user for permission when needed, then do the work.
+**Principle:** When something is broken or missing, fix it. Don't tell the user to go fix it themselves unless it genuinely requires their manual action (e.g. authenticating a channel, pasting a secret token). If a dependency is missing, install it. If a service won't start, diagnose and repair. Ask the user for permission when needed, then do the work.
 
 **UX Note:** Use `AskUserQuestion` for all user-facing questions.
 
@@ -27,9 +27,11 @@ Run `bash setup.sh` and parse the status block.
 
 Run `npx tsx setup/index.ts --step environment` and parse the status block.
 
-- If HAS_FEISHU=true → note that Feishu config exists, offer to skip step 5
+- If HAS_FEISHU=true → note that Feishu config exists
 - If HAS_REGISTERED_GROUPS=true → note existing config, offer to skip or reconfigure
 - Record APPLE_CONTAINER and DOCKER values for step 3
+
+**Feishu is the default built-in channel.** Unlike other channels (Telegram, Slack, Discord) which require installing a skill, Feishu is included in NanoClaw core and works immediately once you configure the credentials in step 5.
 
 ## 3. Container Runtime
 
@@ -38,12 +40,12 @@ Run `npx tsx setup/index.ts --step environment` and parse the status block.
 Check the preflight results for `APPLE_CONTAINER` and `DOCKER`, and the PLATFORM from step 1.
 
 - PLATFORM=linux → Docker (only option)
-- PLATFORM=macos + APPLE_CONTAINER=installed → Use `AskUserQuestion: Docker (default, cross-platform) or Apple Container (native macOS)?` If Apple Container, run `/convert-to-apple-container` now, then skip to 3c.
-- PLATFORM=macos + APPLE_CONTAINER=not_found → Docker (default)
+- PLATFORM=macos + APPLE_CONTAINER=installed → Use `AskUserQuestion: Docker (cross-platform) or Apple Container (native macOS)?` If Apple Container, run `/convert-to-apple-container` now, then skip to 4c.
+- PLATFORM=macos + APPLE_CONTAINER=not_found → Docker
 
 ### 3a-docker. Install Docker
 
-- DOCKER=running → continue to 3b
+- DOCKER=running → continue to 4b
 - DOCKER=installed_not_running → start Docker: `open -a Docker` (macOS) or `sudo systemctl start docker` (Linux). Wait 15s, re-check with `docker info`.
 - DOCKER=not_found → Use `AskUserQuestion: Docker is required for running agents. Would you like me to install it?` If confirmed:
   - macOS: install via `brew install --cask docker`, then `open -a Docker` and wait for it to start. If brew not available, direct to Docker Desktop download at https://docker.com/products/docker-desktop
@@ -59,15 +61,16 @@ grep -q "CONTAINER_RUNTIME_BIN = 'container'" src/container-runtime.ts && echo "
 
 **If NEEDS_CONVERSION**, the source code still uses Docker as the runtime. You MUST run the `/convert-to-apple-container` skill NOW, before proceeding to the build step.
 
-**If ALREADY_CONVERTED**, the code already uses Apple Container. Continue to 3c.
+**If ALREADY_CONVERTED**, the code already uses Apple Container. Continue to 4c.
 
-**If the chosen runtime is Docker**, no conversion is needed — Docker is the default. Continue to 3c.
+**If the chosen runtime is Docker**, no conversion is needed. Continue to 4c.
 
 ### 3c. Build and test
 
 Run `npx tsx setup/index.ts --step container -- --runtime <chosen>` and parse the status block.
 
 **If BUILD_OK=false:** Read `logs/setup.log` tail for the build error.
+
 - Cache issue (stale layers): `docker builder prune -f` (Docker) or `container builder stop && container builder rm && container builder start` (Apple Container). Retry.
 - Dockerfile syntax or missing files: diagnose from the log and fix, then retry.
 
@@ -83,62 +86,73 @@ AskUserQuestion: Claude subscription (Pro/Max) vs Anthropic API key?
 
 **API key:** Tell user to add `ANTHROPIC_API_KEY=<key>` to `.env`.
 
-## 5. Feishu Bot Configuration
+## 5. Set Up Channels
 
-If HAS_FEISHU=true, confirm: keep existing configuration or reconfigure?
+**Feishu is the default built-in channel** — no skill installation needed. It works immediately once configured. You can also add other channels as optional extensions.
 
-**Prerequisites:** User must create a Feishu app at https://open.feishu.cn/app before this step.
+### 5a. Configure Feishu (Default Channel)
 
-AskUserQuestion: Do you have your Feishu App ID and App Secret ready?
+Feishu is included in NanoClaw core. To enable it:
 
-If no → Direct user to `docs/FEISHU_SETUP.md` for detailed instructions, then return here.
+1. **Get credentials** from your Feishu app (https://open.feishu.cn/app):
+   - `FEISHU_APP_ID`
+   - `FEISHU_APP_SECRET`
 
-If yes → Collect credentials:
-- Ask for `FEISHU_APP_ID` (format: `cli_xxxxxxxxxxxxxxxx`)
-- Ask for `FEISHU_APP_SECRET` (from app dashboard → Credentials & Basic Info)
+2. **Add to `.env`:**
+   ```
+   FEISHU_APP_ID=cli_xxxxxxxxxx
+   FEISHU_APP_SECRET=xxxxxxxxxx
+   ```
 
-Write to `.env`:
+3. **Verify connection:** Run `npx tsx setup/index.ts --step verify` to check Feishu WebSocket connection status.
+
+### 5b. Add Optional Channels (Skills)
+
+AskUserQuestion (multiSelect): Which additional messaging channels do you want to enable?
+
+- Telegram (authenticates via bot token from @BotFather)
+- Slack (authenticates via Slack app with Socket Mode)
+- Discord (authenticates via Discord bot token)
+- Gmail (authenticates via GCP OAuth for email integration)
+
+For each selected channel, invoke its skill:
+
+- **Telegram:** Invoke `/add-telegram`
+- **Slack:** Invoke `/add-slack`
+- **Discord:** Invoke `/add-discord`
+- **Gmail:** Invoke `/add-gmail`
+
+Each skill will:
+
+1. Install the channel code (via `apply-skill`)
+2. Collect credentials/tokens and write to `.env`
+3. Authenticate (verify token-based connection)
+4. Register the chat with the correct JID format
+5. Build and verify
+
+### 5c. Register Main Chat
+
+After configuring channel(s), register your main chat:
+
 ```bash
-FEISHU_APP_ID=cli_xxxxxxxxxxxxxxxx
-FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+npx tsx setup/index.ts --step register --jid "feishu:YOUR_CHAT_ID" --name "main" --folder main --is-main
 ```
 
-Then run: `npx tsx setup/index.ts --step feishu-auth`
+For Feishu, get your chat ID from the Feishu app or by checking `logs/nanoclaw.log` after the bot receives a message (it logs unregistered chats with their JID).
 
-**If failed:** INVALID_CREDENTIALS → re-check App ID/Secret. NETWORK_ERROR → retry.
+**After all channels and registration complete**, continue to step 6.
 
-## 6. Configure Channel Type
-
-AskUserQuestion: Main channel type?
-
-**Personal chat:** Direct message with the bot (no trigger needed)
-**Group chat:** Group with bot added (triggered by @mention)
-
-## 7. Discover and Select Chat
-
-Feishu chats are discovered automatically when the bot receives messages. To register a group:
-
-1. Add the bot to a Feishu group (via Feishu app → Group Settings → Group Apps)
-2. Send a message in that group
-3. Check logs: `tail -f logs/nanoclaw.log` for the chat ID
-4. Or query database: `sqlite3 store/messages.db "SELECT jid, name FROM groups WHERE jid LIKE 'feishu:%'"`
-
-The JID format is: `feishu:oc_xxxxxxxxxxxxxxxx` (for groups) or `feishu:ou_xxxxxxxxxxxxxxxx` (for private chats)
-
-## 8. Register Channel
-
-Run `npx tsx setup/index.ts --step register -- --jid "feishu:CHAT_ID" --name "main" --folder "main"` plus `--no-trigger-required` if private chat (the bot only sees direct messages to it).
-
-## 9. Mount Allowlist
+## 6. Mount Allowlist
 
 AskUserQuestion: Agent access to external directories?
 
 **No:** `npx tsx setup/index.ts --step mounts -- --empty`
 **Yes:** Collect paths/permissions. `npx tsx setup/index.ts --step mounts -- --json '{"allowedRoots":[...],"blockedPatterns":[],"nonMainReadOnly":true}'`
 
-## 10. Start Service
+## 7. Start Service
 
 If service already running: unload first.
+
 - macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist`
 - Linux: `systemctl --user stop nanoclaw` (or `systemctl stop nanoclaw` if root)
 
@@ -150,6 +164,7 @@ Run `npx tsx setup/index.ts --step service` and parse the status block.
 
 1. Immediate fix: `sudo setfacl -m u:$(whoami):rw /var/run/docker.sock`
 2. Persistent fix (re-applies after every Docker restart):
+
 ```bash
 sudo mkdir -p /etc/systemd/system/docker.service.d
 sudo tee /etc/systemd/system/docker.service.d/socket-acl.conf << 'EOF'
@@ -158,41 +173,50 @@ ExecStartPost=/usr/bin/setfacl -m u:USERNAME:rw /var/run/docker.sock
 EOF
 sudo systemctl daemon-reload
 ```
+
 Replace `USERNAME` with the actual username (from `whoami`). Run the two `sudo` commands separately — the `tee` heredoc first, then `daemon-reload`. After user confirms setfacl ran, re-run the service step.
 
 **If SERVICE_LOADED=false:**
+
 - Read `logs/setup.log` for the error.
 - macOS: check `launchctl list | grep nanoclaw`. If PID=`-` and status non-zero, read `logs/nanoclaw.error.log`.
 - Linux: check `systemctl --user status nanoclaw`.
 - Re-run the service step after fixing.
 
-## 11. Verify
+## 8. Verify
 
 Run `npx tsx setup/index.ts --step verify` and parse the status block.
 
 **If STATUS=failed, fix each:**
+
 - SERVICE=stopped → `npm run build`, then restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux) or `bash start-nanoclaw.sh` (WSL nohup)
-- SERVICE=not_found → re-run step 10
+- SERVICE=not_found → re-run step 7
 - CREDENTIALS=missing → re-run step 4
-- FEISHU_CONFIG=missing → re-run step 5
-- REGISTERED_GROUPS=0 → re-run steps 7-8
+- CHANNEL_AUTH shows `not_found` for Feishu → check `FEISHU_APP_ID` and `FEISHU_APP_SECRET` in `.env`
+- CHANNEL_AUTH shows `not_found` for other channels → re-invoke that channel's skill (e.g. `/add-telegram`)
+- REGISTERED_GROUPS=0 → re-invoke the channel skills from step 5
 - MOUNT_ALLOWLIST=missing → `npx tsx setup/index.ts --step mounts -- --empty`
 
 Tell user to test: send a message in their registered chat. Show: `tail -f logs/nanoclaw.log`
 
 ## Troubleshooting
 
-**Service not starting:** Check `logs/nanoclaw.error.log`. Common: wrong Node path (re-run step 10), missing `.env` (step 4), missing auth (step 5).
+**Service not starting:** Check `logs/nanoclaw.error.log`. Common: wrong Node path (re-run step 7), missing `.env` (step 4), missing Feishu credentials (step 5a), or missing optional channel credentials (re-invoke channel skill).
 
 **Container agent fails ("Claude Code process exited with code 1"):** Ensure the container runtime is running — `open -a Docker` (macOS Docker), `container system start` (Apple Container), or `sudo systemctl start docker` (Linux). Check container logs in `groups/main/logs/container-*.log`.
 
 **No response to messages:** Check that the bot was @mentioned in group chats. Main channel and private chats don't need @mention. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/nanoclaw.log`. Ensure bot is added to the group and has permission to read/send messages.
 
-**Feishu bot not receiving messages:**
-- Verify Feishu app is published (Versions & Releases)
-- Check that `im.message.receive_v1` event is subscribed
-- Ensure bot has been added to the chat
-- Check `FEISHU_APP_ID` and `FEISHU_APP_SECRET` are correct
-- Check NanoClaw logs for WebSocket connection status
+**Channel not connecting:**
+
+**Feishu (default built-in):** Verify credentials are set in `.env` (`FEISHU_APP_ID` and `FEISHU_APP_SECRET`). Check that:
+- Feishu app is published (Versions & Releases in https://open.feishu.cn/app)
+- `im.message.receive_v1` event is subscribed
+- Bot has been added to the chat
+- NanoClaw logs show WebSocket connection status
+
+**Optional channels (Telegram, Slack, Discord, Gmail):** Verify the channel's skill is installed and credentials are set in `.env`. Channels auto-enable when their credentials are present. For token-based channels, check token values in `.env`.
+
+Restart the service after any `.env` change.
 
 **Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
