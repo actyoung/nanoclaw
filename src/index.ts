@@ -385,7 +385,8 @@ async function startMessageLoop(): Promise<void> {
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
-            const anyMessageHasTrigger = groupMessages.some(checkMessageTrigger);
+            const anyMessageHasTrigger =
+              groupMessages.some(checkMessageTrigger);
             if (!anyMessageHasTrigger) continue;
           }
 

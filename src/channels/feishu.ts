@@ -853,7 +853,9 @@ export class FeishuChannel implements Channel {
 // Self-register the Feishu channel
 registerChannel('feishu', (opts: ChannelOpts) => {
   if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
-    logger.debug('Feishu: FEISHU_APP_ID or FEISHU_APP_SECRET not set, skipping');
+    logger.debug(
+      'Feishu: FEISHU_APP_ID or FEISHU_APP_SECRET not set, skipping',
+    );
     return null;
   }
   return new FeishuChannel(opts);
