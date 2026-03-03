@@ -78,9 +78,11 @@ function createSchema(database: Database.Database): void {
       jid TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       folder TEXT NOT NULL UNIQUE,
+      trigger_pattern TEXT,
       added_at TEXT NOT NULL,
       container_config TEXT,
-      requires_trigger INTEGER DEFAULT 1
+      requires_trigger INTEGER DEFAULT 1,
+      is_main INTEGER DEFAULT 0
     );
   `);
 

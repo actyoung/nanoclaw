@@ -6,7 +6,7 @@ import { readEnvFile } from './env.js';
 // Read config values from .env (falls back to process.env).
 // Secrets are NOT read here — they stay on disk and are loaded only
 // where needed (container-runner.ts) to avoid leaking to child processes.
-const envConfig = readEnvFile(['FEISHU_APP_ID', 'FEISHU_APP_SECRET']);
+const envConfig = readEnvFile(['FEISHU_APP_ID', 'FEISHU_APP_SECRET', 'ASSISTANT_NAME']);
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
