@@ -14,7 +14,12 @@ interface UseIPCOptions {
   groupFolder?: string;
 }
 
-export const useIPC = ({ onEvent, onConnected, onError, groupFolder }: UseIPCOptions) => {
+export const useIPC = ({
+  onEvent,
+  onConnected,
+  onError,
+  groupFolder,
+}: UseIPCOptions) => {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const socketRef = useRef<net.Socket | null>(null);
@@ -92,7 +97,8 @@ export const useIPC = ({ onEvent, onConnected, onError, groupFolder }: UseIPCOpt
 
   const sendMessage = useCallback((text: string, msgGroupFolder?: string) => {
     socketRef.current?.write(
-      JSON.stringify({ type: 'message', text, groupFolder: msgGroupFolder }) + '\n',
+      JSON.stringify({ type: 'message', text, groupFolder: msgGroupFolder }) +
+        '\n',
     );
   }, []);
 

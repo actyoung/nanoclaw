@@ -180,7 +180,10 @@ export class IpcServer {
               groups,
             });
           } else if (msg.type === 'subscribe' && msg.groupFolder) {
-            logger.debug({ clientId, groupFolder: msg.groupFolder }, 'CLI client subscribed to group');
+            logger.debug(
+              { clientId, groupFolder: msg.groupFolder },
+              'CLI client subscribed to group',
+            );
             this.clientSubscriptions.set(clientId, msg.groupFolder);
           }
         } catch (err) {
