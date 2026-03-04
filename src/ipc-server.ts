@@ -24,7 +24,6 @@ export interface AgentEvent {
 
 export interface CliMessage {
   type: 'message' | 'list_groups';
-  groupJid?: string;
   text?: string;
 }
 
@@ -152,8 +151,8 @@ export class IpcServer {
         if (!line.trim()) continue;
         try {
           const msg = JSON.parse(line) as CliMessage;
-          if (msg.type === 'message' && msg.groupJid && msg.text) {
-            logger.debug({ clientId, groupJid: msg.groupJid }, 'CLI message received');
+          if (msg.type === 'message' && msg.text) {
+            logger.debug({ clientId }, 'CLI message received');
             this.messageCallback?.(msg);
           } else if (msg.type === 'list_groups') {
             logger.debug({ clientId }, 'CLI list_groups request received');

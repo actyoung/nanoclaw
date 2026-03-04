@@ -40,12 +40,12 @@ Run `npx tsx setup/index.ts --step environment` and parse the status block.
 Check the preflight results for `APPLE_CONTAINER` and `DOCKER`, and the PLATFORM from step 1.
 
 - PLATFORM=linux → Docker (only option)
-- PLATFORM=macos + APPLE_CONTAINER=installed → Use `AskUserQuestion: Docker (cross-platform) or Apple Container (native macOS)?` If Apple Container, run `/convert-to-apple-container` now, then skip to 4c.
+- PLATFORM=macos + APPLE_CONTAINER=installed → Use `AskUserQuestion: Docker (cross-platform) or Apple Container (native macOS)?` If Apple Container, run `/convert-to-apple-container` now, then skip to 3c.
 - PLATFORM=macos + APPLE_CONTAINER=not_found → Docker
 
 ### 3a-docker. Install Docker
 
-- DOCKER=running → continue to 4b
+- DOCKER=running → continue to step 4 (Claude Authentication)
 - DOCKER=installed_not_running → start Docker: `open -a Docker` (macOS) or `sudo systemctl start docker` (Linux). Wait 15s, re-check with `docker info`.
 - DOCKER=not_found → Use `AskUserQuestion: Docker is required for running agents. Would you like me to install it?` If confirmed:
   - macOS: install via `brew install --cask docker`, then `open -a Docker` and wait for it to start. If brew not available, direct to Docker Desktop download at https://docker.com/products/docker-desktop
@@ -61,9 +61,9 @@ grep -q "CONTAINER_RUNTIME_BIN = 'container'" src/container-runtime.ts && echo "
 
 **If NEEDS_CONVERSION**, the source code still uses Docker as the runtime. You MUST run the `/convert-to-apple-container` skill NOW, before proceeding to the build step.
 
-**If ALREADY_CONVERTED**, the code already uses Apple Container. Continue to 4c.
+**If ALREADY_CONVERTED**, the code already uses Apple Container. Continue to 3c.
 
-**If the chosen runtime is Docker**, no conversion is needed. Continue to 4c.
+**If the chosen runtime is Docker**, no conversion is needed. Continue to 3c.
 
 ### 3c. Build and test
 
@@ -198,6 +198,17 @@ Run `npx tsx setup/index.ts --step verify` and parse the status block.
 - MOUNT_ALLOWLIST=missing → `npx tsx setup/index.ts --step mounts -- --empty`
 
 Tell user to test: send a message in their registered chat. Show: `tail -f logs/nanoclaw.log`
+
+## 9. Initialize CLI Channel
+
+Run `npx tsx setup/index.ts --step cli` to initialize the CLI channel.
+
+This creates a dedicated CLI group (`cli:internal:main`) that operates as an independent channel, preventing routing conflicts with messaging channels like Feishu.
+
+- **If CLI_INIT CREATED=true** → New CLI group created
+- **If CLI_INIT CREATED=false** → CLI group already exists (skipped)
+
+This step is safe to run multiple times; it will skip if the CLI group already exists.
 
 ## Troubleshooting
 

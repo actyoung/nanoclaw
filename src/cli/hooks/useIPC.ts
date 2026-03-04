@@ -3,20 +3,18 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from '../../config.js';
-import { AgentEvent, GroupInfo, CliResponse } from '../types.js';
+import { AgentEvent, CliResponse } from '../types.js';
 
 const SOCKET_PATH = path.join(DATA_DIR, 'nanoclaw.sock');
 
 interface UseIPCOptions {
   onEvent: (event: AgentEvent) => void;
-  onGroupsList: (groups: GroupInfo[]) => void;
   onConnected?: () => void;
   onError?: (error: string) => void;
 }
 
 export const useIPC = ({
   onEvent,
-  onGroupsList,
   onConnected,
   onError,
 }: UseIPCOptions) => {
@@ -56,8 +54,6 @@ export const useIPC = ({
       setConnected(true);
       setConnecting(false);
       onConnected?.();
-      // Request groups list on connect
-      socket.write(JSON.stringify({ type: 'list_groups' }) + '\n');
     });
 
     socket.on('close', () => {
@@ -75,11 +71,6 @@ export const useIPC = ({
         case 'connected':
           // Initial connection established
           break;
-        case 'groups_list':
-          if (msg.groups) {
-            onGroupsList(msg.groups);
-          }
-          break;
         case 'event':
           if (msg.event) {
             onEvent(msg.event);
@@ -93,27 +84,15 @@ export const useIPC = ({
     };
   }, []);
 
-  const sendMessage = useCallback((text: string, groupJid: string) => {
+  const sendMessage = useCallback((text: string) => {
     socketRef.current?.write(
-      JSON.stringify({ type: 'message', groupJid, text }) + '\n',
+      JSON.stringify({ type: 'message', text }) + '\n',
     );
-  }, []);
-
-  const selectGroup = useCallback((jid: string) => {
-    socketRef.current?.write(
-      JSON.stringify({ type: 'select_group', jid }) + '\n',
-    );
-  }, []);
-
-  const requestGroups = useCallback(() => {
-    socketRef.current?.write(JSON.stringify({ type: 'list_groups' }) + '\n');
   }, []);
 
   return {
     connected,
     connecting,
     sendMessage,
-    selectGroup,
-    requestGroups,
   };
 };

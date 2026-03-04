@@ -65,6 +65,11 @@ let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
+// CLI group constants
+// Using a special JID format that won't conflict with any real messaging channel
+const CLI_GROUP_JID = 'cli:internal:main';
+const CLI_GROUP_FOLDER = 'cli-main';
+
 const channels: Channel[] = [];
 const queue = new GroupQueue();
 
@@ -91,6 +96,24 @@ function loadState(): void {
 function saveState(): void {
   setRouterState('last_timestamp', lastTimestamp);
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
+}
+
+/**
+ * Ensure CLI group is auto-registered on startup.
+ * CLI uses a dedicated group to prevent routing conflicts with other channels.
+ */
+function ensureCliGroup(): void {
+  if (!registeredGroups[CLI_GROUP_JID]) {
+    const cliGroup: RegisteredGroup = {
+      name: 'CLI Main',
+      folder: CLI_GROUP_FOLDER,
+      isMain: true, // CLI doesn't require trigger
+      requiresTrigger: false,
+      added_at: new Date().toISOString(),
+    };
+    registerGroup(CLI_GROUP_JID, cliGroup);
+    logger.info('CLI group auto-registered');
+  }
 }
 
 function registerGroup(jid: string, group: RegisteredGroup): void {
@@ -150,8 +173,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const group = registeredGroups[chatJid];
   if (!group) return true;
 
+  // Check if this is the CLI group (special handling)
+  const isCliGroup = chatJid === CLI_GROUP_JID;
+
   const channel = findChannel(channels, chatJid);
-  if (!channel) {
+  if (!channel && !isCliGroup) {
     logger.warn({ chatJid }, 'No channel owns JID, skipping messages');
     return true;
   }
@@ -173,7 +199,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Determine the source channel for reply routing
   // Use the source_channel from the last message, or fall back to the channel that owns this JID
   const lastMessage = missedMessages[missedMessages.length - 1];
-  const replyChannel = lastMessage.source_channel || jidToChannel.get(chatJid) || channel.name;
+  const replyChannel = lastMessage.source_channel || jidToChannel.get(chatJid) || channel?.name || 'cli';
   const isCliSource = replyChannel === 'cli';
 
   logger.info(
@@ -211,7 +237,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
-  await channel.setTyping?.(chatJid, true);
+  await channel?.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
 
@@ -235,7 +261,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         } else {
           // Channel-initiated conversation: reply to the original channel
           logger.info({ group: group.name, text: text.slice(0, 50), replyChannel }, 'Channel source - sending to channel');
-          await channel.sendMessage(chatJid, text);
+          await channel?.sendMessage(chatJid, text);
         }
         outputSentToUser = true;
         // Always broadcast to CLI for monitoring
@@ -266,7 +292,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
   });
 
-  await channel.setTyping?.(chatJid, false);
+  await channel?.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
@@ -429,8 +455,11 @@ async function startMessageLoop(): Promise<void> {
           const group = registeredGroups[chatJid];
           if (!group) continue;
 
+          // Check if this is the CLI group (special handling)
+          const isCliGroup = chatJid === CLI_GROUP_JID;
+
           const channel = findChannel(channels, chatJid);
-          if (!channel) {
+          if (!channel && !isCliGroup) {
             logger.warn({ chatJid }, 'No channel owns JID, skipping messages');
             continue;
           }
@@ -468,7 +497,7 @@ async function startMessageLoop(): Promise<void> {
             saveState();
             // Show typing indicator while the container processes the piped message
             channel
-              .setTyping?.(chatJid, true)
+              ?.setTyping?.(chatJid, true)
               ?.catch((err) =>
                 logger.warn({ chatJid, err }, 'Failed to set typing indicator'),
               );
@@ -513,6 +542,7 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
   loadState();
+  ensureCliGroup();
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
@@ -581,19 +611,22 @@ async function main(): Promise<void> {
   ipcServer.start();
   ipcServer.onMessage((msg) => {
     // Handle incoming messages from CLI clients
-    if (msg.type === 'message' && msg.groupJid && msg.text) {
-      const group = registeredGroups[msg.groupJid];
+    // CLI uses a fixed group JID to prevent routing conflicts
+    if (msg.type === 'message' && msg.text) {
+      const group = registeredGroups[CLI_GROUP_JID];
       if (!group) {
-        logger.warn({ groupJid: msg.groupJid }, 'CLI message for unknown group');
+        logger.warn('CLI group not found');
         return;
       }
       // Track JID -> channel mapping for reply routing
-      jidToChannel.set(msg.groupJid, 'cli');
-      logger.info({ groupJid: msg.groupJid, text: msg.text?.slice(0, 50) }, 'CLI message received, storing with source_channel=cli');
+      jidToChannel.set(CLI_GROUP_JID, 'cli');
+      logger.info({ text: msg.text?.slice(0, 50) }, 'CLI message received, storing with source_channel=cli');
+      // Ensure chat metadata exists (required for foreign key constraint)
+      storeChatMetadata(CLI_GROUP_JID, new Date().toISOString(), 'CLI Main', 'cli', true);
       // Store message as if it came from a channel
       storeMessage({
         id: `cli-${Date.now()}`,
-        chat_jid: msg.groupJid,
+        chat_jid: CLI_GROUP_JID,
         sender: 'cli',
         sender_name: 'CLI User',
         content: msg.text,
@@ -603,15 +636,8 @@ async function main(): Promise<void> {
         source_channel: 'cli',
       });
       // Trigger processing
-      queue.enqueueMessageCheck(msg.groupJid);
+      queue.enqueueMessageCheck(CLI_GROUP_JID);
     }
-  });
-  ipcServer.onGroupsList(() => {
-    return Object.entries(registeredGroups).map(([jid, g]) => ({
-      jid,
-      name: g.name,
-      folder: g.folder,
-    }));
   });
 
   startSchedulerLoop({

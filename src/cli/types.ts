@@ -34,15 +34,12 @@ export interface Message {
 export type Status = 'idle' | 'starting' | 'processing';
 
 export interface CliMessage {
-  type: 'message' | 'list_groups' | 'select_group';
-  groupJid?: string;
+  type: 'message';
   text?: string;
-  jid?: string;
 }
 
 export interface CliResponse {
-  type: 'connected' | 'event' | 'groups_list';
+  type: 'connected' | 'event';
   message?: string;
   event?: AgentEvent;
-  groups?: GroupInfo[];
 }

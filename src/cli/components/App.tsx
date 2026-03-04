@@ -1,29 +1,26 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { useIPC } from '../hooks/useIPC.js';
 import { Header } from './Header.js';
 import { MessageList } from './MessageList.js';
 import { InputBox } from './InputBox.js';
 import { StatusBar } from './StatusBar.js';
-import { GroupSelector } from './GroupSelector.js';
 import { Help } from './Help.js';
-import { AgentEvent, GroupInfo, Message, Status } from '../types.js';
+import { AgentEvent, Message, Status } from '../types.js';
+
+const CLI_GROUP_JID = 'cli:internal:main';
+const CLI_GROUP_FOLDER = 'cli-main';
 
 export const App: React.FC = () => {
   const { exit } = useApp();
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<Status>('idle');
-  const [currentGroupJid, setCurrentGroupJid] = useState<string | null>(null);
-  const [groups, setGroups] = useState<GroupInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showGroupSelector, setShowGroupSelector] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
-  const currentGroup = useMemo(() => {
-    return groups.find((g) => g.jid === currentGroupJid)?.folder ?? null;
-  }, [groups, currentGroupJid]);
-
   const handleEvent = useCallback((event: AgentEvent) => {
+    // Only show messages from CLI group
+    if (event.groupJid !== CLI_GROUP_JID) return;
 
     switch (event.type) {
       case 'container:started':
@@ -39,7 +36,7 @@ export const App: React.FC = () => {
         setStatus('idle');
         break;
       case 'message:received': {
-        // Message from other channels (Feishu, etc.) - show as incoming
+        // Message from CLI channel
         const data = event.data as {
           sender_name: string;
           content: string;
@@ -54,7 +51,6 @@ export const App: React.FC = () => {
               sender: data.sender_name,
               content: data.content,
               timestamp: Date.now(),
-              groupJid: event.groupJid,
             },
           ]);
         }
@@ -71,17 +67,15 @@ export const App: React.FC = () => {
             sender: 'agent',
             content: text,
             timestamp: Date.now(),
-            groupJid: event.groupJid,
           },
         ]);
         break;
       }
     }
-  }, [groups]);
+  }, []);
 
   const { connected, sendMessage } = useIPC({
     onEvent: handleEvent,
-    onGroupsList: setGroups,
     onError: setError,
   });
 
@@ -89,40 +83,8 @@ export const App: React.FC = () => {
     (text: string) => {
       // Handle commands
       if (text.startsWith('/')) {
-        const [cmd, ...args] = text.slice(1).split(' ');
+        const [cmd] = text.slice(1).split(' ');
         switch (cmd) {
-          case 'use':
-            if (args[0]) {
-              const group = groups.find((g) => g.folder === args[0]);
-              if (group) {
-                setCurrentGroupJid(group.jid);
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: `${Date.now()}-${Math.random()}`,
-                    type: 'received',
-                    sender: 'system',
-                    content: `Switched to ${group.name}`,
-                    timestamp: Date.now(),
-                  },
-                ]);
-              } else {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: `${Date.now()}-${Math.random()}`,
-                    type: 'received',
-                    sender: 'system',
-                    content: `Group not found: ${args[0]}`,
-                    timestamp: Date.now(),
-                  },
-                ]);
-              }
-            }
-            return;
-          case 'groups':
-            setShowGroupSelector(true);
-            return;
           case 'help':
             setShowHelp(true);
             return;
@@ -145,50 +107,33 @@ export const App: React.FC = () => {
         }
       }
 
-      // Send message
-      if (currentGroupJid) {
-        // Add user message to local display immediately
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-${Math.random()}`,
-            type: 'sent',
-            sender: 'you',
-            content: text,
-            timestamp: Date.now(),
-            groupJid: currentGroupJid,
-          },
-        ]);
-        sendMessage(text, currentGroupJid);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-${Math.random()}`,
-            type: 'received',
-            sender: 'system',
-            content: 'No group selected. Use /groups or /use <folder> first.',
-            timestamp: Date.now(),
-          },
-        ]);
-      }
+      // Send message to CLI group
+      // Add user message to local display immediately
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-${Math.random()}`,
+          type: 'sent',
+          sender: 'you',
+          content: text,
+          timestamp: Date.now(),
+        },
+      ]);
+      sendMessage(text);
     },
-    [currentGroupJid, groups, sendMessage, exit],
+    [sendMessage, exit],
   );
 
   // Global keyboard shortcuts
-  useInput((input, key) => {
-    if (showGroupSelector || showHelp) {
+  useInput((_input, key) => {
+    if (showHelp) {
       if (key.escape) {
-        setShowGroupSelector(false);
         setShowHelp(false);
       }
       return;
     }
 
-    if (key.ctrl && input === 'g') {
-      setShowGroupSelector(true);
-    } else if (key.ctrl && input === 'h') {
+    if (key.ctrl && _input === 'h') {
       setShowHelp(true);
     }
   });
@@ -210,37 +155,15 @@ export const App: React.FC = () => {
         <Box flexGrow={1}>
           <Help onClose={() => setShowHelp(false)} />
         </Box>
-      ) : showGroupSelector ? (
-        <Box flexGrow={1}>
-          <GroupSelector
-            groups={groups}
-            currentGroupJid={currentGroupJid}
-            onSelect={(group) => {
-              setCurrentGroupJid(group.jid);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `${Date.now()}-${Math.random()}`,
-                  type: 'received',
-                  sender: 'system',
-                  content: `Switched to ${group.name}`,
-                  timestamp: Date.now(),
-                },
-              ]);
-              setShowGroupSelector(false);
-            }}
-            onCancel={() => setShowGroupSelector(false)}
-          />
-        </Box>
       ) : (
         <MessageList messages={messages} />
       )}
 
-      <StatusBar status={status} group={currentGroup} />
+      <StatusBar status={status} group={CLI_GROUP_FOLDER} />
       <InputBox
         onSubmit={handleSubmit}
-        currentGroup={currentGroup}
-        disabled={showGroupSelector || showHelp}
+        currentGroup={CLI_GROUP_FOLDER}
+        disabled={showHelp}
       />
     </Box>
   );
