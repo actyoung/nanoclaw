@@ -128,17 +128,24 @@ export class IpcServer {
   /**
    * Register a provider for groups list
    */
-  onGroupsList(callback: () => Array<{ jid: string; name: string; folder: string }>): void {
+  onGroupsList(
+    callback: () => Array<{ jid: string; name: string; folder: string }>,
+  ): void {
     this.groupsListCallback = callback;
   }
 
   private messageCallback: ((msg: CliMessage) => void) | null = null;
-  private groupsListCallback: (() => Array<{ jid: string; name: string; folder: string }>) | null = null;
+  private groupsListCallback:
+    | (() => Array<{ jid: string; name: string; folder: string }>)
+    | null = null;
 
   private handleClientConnection(socket: net.Socket): void {
     const clientId = `cli-${++this.clientCounter}`;
     this.clients.set(clientId, socket);
-    logger.info({ clientId, clientCount: this.clients.size }, 'CLI client connected');
+    logger.info(
+      { clientId, clientCount: this.clients.size },
+      'CLI client connected',
+    );
 
     let buffer = '';
 
@@ -163,7 +170,10 @@ export class IpcServer {
             });
           }
         } catch (err) {
-          logger.warn({ clientId, line, err }, 'Invalid message from CLI client');
+          logger.warn(
+            { clientId, line, err },
+            'Invalid message from CLI client',
+          );
         }
       }
     });

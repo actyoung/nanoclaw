@@ -6,7 +6,11 @@ interface UseKeyboardOptions {
   onGroups: () => void;
 }
 
-export const useKeyboard = ({ onExit, onHelp, onGroups }: UseKeyboardOptions) => {
+export const useKeyboard = ({
+  onExit,
+  onHelp,
+  onGroups,
+}: UseKeyboardOptions) => {
   useInput((input, key) => {
     // Ctrl+C or Escape to exit
     if (key.ctrl && input === 'c') {

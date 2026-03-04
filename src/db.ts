@@ -120,9 +120,7 @@ function createSchema(database: Database.Database): void {
 
   // Add source_channel column if it doesn't exist (migration for existing DBs)
   try {
-    database.exec(
-      `ALTER TABLE messages ADD COLUMN source_channel TEXT`,
-    );
+    database.exec(`ALTER TABLE messages ADD COLUMN source_channel TEXT`);
   } catch {
     /* column already exists */
   }
@@ -403,7 +401,9 @@ export function getLastMessageSourceChannel(chatJid: string): string | null {
     ORDER BY timestamp DESC
     LIMIT 1
   `;
-  const row = db.prepare(sql).get(chatJid) as { source_channel: string | null } | undefined;
+  const row = db.prepare(sql).get(chatJid) as
+    | { source_channel: string | null }
+    | undefined;
   return row?.source_channel ?? null;
 }
 

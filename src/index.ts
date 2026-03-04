@@ -199,7 +199,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Determine the source channel for reply routing
   // Use the source_channel from the last message, or fall back to the channel that owns this JID
   const lastMessage = missedMessages[missedMessages.length - 1];
-  const replyChannel = lastMessage.source_channel || jidToChannel.get(chatJid) || channel?.name || 'cli';
+  const replyChannel =
+    lastMessage.source_channel ||
+    jidToChannel.get(chatJid) ||
+    channel?.name ||
+    'cli';
   const isCliSource = replyChannel === 'cli';
 
   logger.info(
@@ -257,10 +261,16 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         // - Other sources: send to the original channel AND broadcast to CLI
         if (isCliSource) {
           // CLI-initiated conversation: reply only to CLI
-          logger.info({ group: group.name, text: text.slice(0, 50) }, 'CLI source - NOT sending to channel');
+          logger.info(
+            { group: group.name, text: text.slice(0, 50) },
+            'CLI source - NOT sending to channel',
+          );
         } else {
           // Channel-initiated conversation: reply to the original channel
-          logger.info({ group: group.name, text: text.slice(0, 50), replyChannel }, 'Channel source - sending to channel');
+          logger.info(
+            { group: group.name, text: text.slice(0, 50), replyChannel },
+            'Channel source - sending to channel',
+          );
           await channel?.sendMessage(chatJid, text);
         }
         outputSentToUser = true;
@@ -620,9 +630,18 @@ async function main(): Promise<void> {
       }
       // Track JID -> channel mapping for reply routing
       jidToChannel.set(CLI_GROUP_JID, 'cli');
-      logger.info({ text: msg.text?.slice(0, 50) }, 'CLI message received, storing with source_channel=cli');
+      logger.info(
+        { text: msg.text?.slice(0, 50) },
+        'CLI message received, storing with source_channel=cli',
+      );
       // Ensure chat metadata exists (required for foreign key constraint)
-      storeChatMetadata(CLI_GROUP_JID, new Date().toISOString(), 'CLI Main', 'cli', true);
+      storeChatMetadata(
+        CLI_GROUP_JID,
+        new Date().toISOString(),
+        'CLI Main',
+        'cli',
+        true,
+      );
       // Store message as if it came from a channel
       storeMessage({
         id: `cli-${Date.now()}`,

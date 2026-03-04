@@ -13,11 +13,7 @@ interface UseIPCOptions {
   onError?: (error: string) => void;
 }
 
-export const useIPC = ({
-  onEvent,
-  onConnected,
-  onError,
-}: UseIPCOptions) => {
+export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const socketRef = useRef<net.Socket | null>(null);
@@ -85,9 +81,7 @@ export const useIPC = ({
   }, []);
 
   const sendMessage = useCallback((text: string) => {
-    socketRef.current?.write(
-      JSON.stringify({ type: 'message', text }) + '\n',
-    );
+    socketRef.current?.write(JSON.stringify({ type: 'message', text }) + '\n');
   }, []);
 
   return {
