@@ -34,7 +34,7 @@ export interface Message {
 export type Status = 'idle' | 'starting' | 'processing';
 
 export interface CliMessage {
-  type: 'message' | 'list_groups';
+  type: 'message' | 'list_groups' | 'subscribe';
   text?: string;
   groupFolder?: string;
 }

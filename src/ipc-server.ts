@@ -23,7 +23,7 @@ export interface AgentEvent {
 }
 
 export interface CliMessage {
-  type: 'message' | 'list_groups';
+  type: 'message' | 'list_groups' | 'subscribe';
   text?: string;
   groupFolder?: string;
 }
@@ -38,6 +38,7 @@ export interface CliResponse {
 export class IpcServer {
   private server: net.Server | null = null;
   private clients: Map<string, net.Socket> = new Map();
+  private clientSubscriptions: Map<string, string> = new Map(); // clientId -> groupFolder
   private clientCounter = 0;
 
   /**
@@ -103,11 +104,19 @@ export class IpcServer {
   }
 
   /**
-   * Broadcast an agent event to all connected CLI clients
+   * Broadcast an agent event to subscribed CLI clients
    */
   broadcastEvent(event: AgentEvent): void {
     const message = JSON.stringify({ type: 'event', event }) + '\n';
+    const targetGroupFolder = event.groupFolder;
+
     for (const [id, client] of this.clients) {
+      // Only send to clients subscribed to this group
+      const subscribedGroup = this.clientSubscriptions.get(id);
+      if (!subscribedGroup || subscribedGroup !== targetGroupFolder) {
+        continue;
+      }
+
       try {
         if (!client.destroyed) {
           client.write(message);
@@ -115,6 +124,7 @@ export class IpcServer {
       } catch (err) {
         logger.debug({ clientId: id, err }, 'Failed to send event to client');
         this.clients.delete(id);
+        this.clientSubscriptions.delete(id);
       }
     }
   }
@@ -169,6 +179,9 @@ export class IpcServer {
               type: 'groups_list',
               groups,
             });
+          } else if (msg.type === 'subscribe' && msg.groupFolder) {
+            logger.debug({ clientId, groupFolder: msg.groupFolder }, 'CLI client subscribed to group');
+            this.clientSubscriptions.set(clientId, msg.groupFolder);
           }
         } catch (err) {
           logger.warn(
@@ -181,6 +194,7 @@ export class IpcServer {
 
     socket.on('close', () => {
       this.clients.delete(clientId);
+      this.clientSubscriptions.delete(clientId);
       logger.info(
         { clientId, clientCount: this.clients.size },
         'CLI client disconnected',

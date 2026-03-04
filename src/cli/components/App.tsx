@@ -82,9 +82,10 @@ export const App: React.FC = () => {
     }
   }, [selectedGroup]);
 
-  const { connected, sendMessage, listGroups } = useIPC({
+  const { connected, sendMessage, listGroups, subscribeToGroup } = useIPC({
     onEvent: handleEvent,
     onError: setError,
+    groupFolder: selectedGroup?.folder,
   });
 
   // Fetch CLI groups on connect
@@ -151,6 +152,7 @@ export const App: React.FC = () => {
             const targetGroup = cliGroups.find((g) => g.folder === folder);
             if (targetGroup) {
               setSelectedGroup(targetGroup);
+              subscribeToGroup(targetGroup.folder); // Subscribe to new group
               setMessages([]); // Clear messages when switching
               setMessages((prev) => [
                 ...prev,
@@ -220,7 +222,7 @@ export const App: React.FC = () => {
       ]);
       sendMessage(text, selectedGroup.folder);
     },
-    [sendMessage, exit, selectedGroup, cliGroups, listGroups],
+    [sendMessage, exit, selectedGroup, cliGroups, listGroups, subscribeToGroup],
   );
 
   // Global keyboard shortcuts
@@ -235,7 +237,9 @@ export const App: React.FC = () => {
         return;
       }
       if (key.return) {
-        setSelectedGroup(cliGroups[selectorIndex]);
+        const selected = cliGroups[selectorIndex];
+        setSelectedGroup(selected);
+        subscribeToGroup(selected.folder);
         setShowGroupSelector(false);
         return;
       }

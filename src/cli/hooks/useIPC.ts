@@ -11,9 +11,10 @@ interface UseIPCOptions {
   onEvent: (event: AgentEvent) => void;
   onConnected?: () => void;
   onError?: (error: string) => void;
+  groupFolder?: string;
 }
 
-export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
+export const useIPC = ({ onEvent, onConnected, onError, groupFolder }: UseIPCOptions) => {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const socketRef = useRef<net.Socket | null>(null);
@@ -89,9 +90,9 @@ export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
     };
   }, []);
 
-  const sendMessage = useCallback((text: string, groupFolder?: string) => {
+  const sendMessage = useCallback((text: string, msgGroupFolder?: string) => {
     socketRef.current?.write(
-      JSON.stringify({ type: 'message', text, groupFolder }) + '\n',
+      JSON.stringify({ type: 'message', text, groupFolder: msgGroupFolder }) + '\n',
     );
   }, []);
 
@@ -102,10 +103,24 @@ export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
     });
   }, []);
 
+  const subscribeToGroup = useCallback((folder: string) => {
+    socketRef.current?.write(
+      JSON.stringify({ type: 'subscribe', groupFolder: folder }) + '\n',
+    );
+  }, []);
+
+  // Subscribe to group when connected and groupFolder changes
+  useEffect(() => {
+    if (connected && groupFolder) {
+      subscribeToGroup(groupFolder);
+    }
+  }, [connected, groupFolder, subscribeToGroup]);
+
   return {
     connected,
     connecting,
     sendMessage,
     listGroups,
+    subscribeToGroup,
   };
 };
