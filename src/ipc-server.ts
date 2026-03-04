@@ -25,6 +25,7 @@ export interface AgentEvent {
 export interface CliMessage {
   type: 'message' | 'list_groups';
   text?: string;
+  groupFolder?: string;
 }
 
 export interface CliResponse {

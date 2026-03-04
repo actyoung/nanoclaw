@@ -1,7 +1,7 @@
 /**
  * Step: cli — Initialize CLI group for standalone CLI channel.
  *
- * Creates the cli-main group with fixed JID (cli:internal:main)
+ * Creates the cli-main group with fixed JID (cli:main)
  * so CLI operates as an independent channel without conflicting
  * with messaging channels like Feishu, Telegram, etc.
  */
@@ -14,7 +14,25 @@ import { STORE_DIR } from '../src/config.js';
 import { logger } from '../src/logger.js';
 import { emitStatus } from './status.js';
 
-const CLI_GROUP_JID = 'cli:internal:main';
+/**
+ * Read assistant name from environment or .env file
+ */
+function getAssistantName(): string {
+  if (process.env.ASSISTANT_NAME) {
+    return process.env.ASSISTANT_NAME.replace(/^["']|["']$/g, '');
+  }
+  const envPath = path.join(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf-8');
+    const match = envContent.match(/^ASSISTANT_NAME=(.+)$/m);
+    if (match) {
+      return match[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  return 'AI Assistant';
+}
+
+const CLI_GROUP_JID = 'cli:main';
 const CLI_GROUP_FOLDER = 'cli-main';
 const CLI_GROUP_NAME = 'CLI Main';
 
@@ -135,29 +153,43 @@ export async function run(_args: string[]): Promise<void> {
   const groupDir = path.join(projectRoot, 'groups', CLI_GROUP_FOLDER);
   fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
 
-  // Create CLAUDE.md for CLI group
+  // Create CLAUDE.md from cli-template
   const groupClaudeMd = path.join(groupDir, 'CLAUDE.md');
   if (!fs.existsSync(groupClaudeMd)) {
-    fs.writeFileSync(
-      groupClaudeMd,
-      `# ${CLI_GROUP_NAME}
+    const templatePath = path.join(projectRoot, '.templates', 'groups', 'cli-template', 'CLAUDE.md');
+    let claudeMdContent: string;
 
-This is the dedicated group for the CLI channel. You can interact with the Agent directly here,
-and all messages will trigger an Agent response without requiring any trigger pattern.
+    if (fs.existsSync(templatePath)) {
+      const template = fs.readFileSync(templatePath, 'utf-8');
+      claudeMdContent = template
+        .replace(/{{GROUP_NAME}}/g, CLI_GROUP_NAME)
+        .replace(/{{GROUP_JID}}/g, CLI_GROUP_JID)
+        .replace(/{{GROUP_FOLDER}}/g, CLI_GROUP_FOLDER)
+        .replace(/{{TIMESTAMP}}/g, timestamp)
+        .replace(/{{ASSISTANT_NAME}}/g, getAssistantName())
+        .replace(/{{PURPOSE}}/g, 'CLI-based agent interaction');
+    } else {
+      // Fallback if template doesn't exist
+      claudeMdContent = `# ${CLI_GROUP_NAME}
 
-## Purpose
+You are ${getAssistantName()}, a personal assistant operating in a CLI environment.
 
-- Direct access to the Agent without going through messaging channels
-- Testing and debugging channel
-- Administrative tasks
+## Group Details
+
+- **JID:** ${CLI_GROUP_JID}
+- **Folder:** ${CLI_GROUP_FOLDER}
+- **Created:** ${timestamp}
 
 ## Notes
 
 - No trigger pattern required - all messages are processed
 - Messages from this channel do NOT get routed to other channels
 - Replies are only shown in the CLI interface
-`,
-    );
+- This group has isolated memory and filesystem from other groups
+`;
+    }
+
+    fs.writeFileSync(groupClaudeMd, claudeMdContent);
     logger.info('Created CLI group CLAUDE.md');
   }
 

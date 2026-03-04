@@ -12,6 +12,8 @@ export const Help: React.FC<HelpProps> = () => {
       <Box marginY={1} flexDirection="column">
         <Text>/help             Show this help</Text>
         <Text>/exit             Exit CLI</Text>
+        <Text>/groups           List and select CLI groups</Text>
+        <Text>/switch &lt;folder&gt;  Switch to a specific group</Text>
       </Box>
       <Text bold>Tips</Text>
       <Box marginY={1} flexDirection="column">

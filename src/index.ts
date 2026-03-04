@@ -66,9 +66,32 @@ let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
 // CLI group constants
-// Using a special JID format that won't conflict with any real messaging channel
-const CLI_GROUP_JID = 'cli:internal:main';
-const CLI_GROUP_FOLDER = 'cli-main';
+// Using cli: prefix to identify CLI groups (cli:main, cli:dev, cli:test, etc.)
+const CLI_MAIN_JID = 'cli:main';
+const CLI_MAIN_FOLDER = 'cli-main';
+
+// Legacy CLI group JID for migration
+const LEGACY_CLI_JID = 'cli:internal:main';
+
+/**
+ * Check if a JID is a CLI group
+ */
+function isCliGroupJid(jid: string): boolean {
+  return jid.startsWith('cli:');
+}
+
+/**
+ * Get all CLI groups from registered groups
+ */
+function getCliGroups(): Array<{ jid: string; folder: string; name: string }> {
+  return Object.entries(registeredGroups)
+    .filter(([jid]) => isCliGroupJid(jid))
+    .map(([jid, group]) => ({
+      jid,
+      folder: group.folder,
+      name: group.name,
+    }));
+}
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
@@ -99,20 +122,55 @@ function saveState(): void {
 }
 
 /**
+ * Migrate legacy CLI group from cli:internal:main to cli:main
+ */
+function migrateCliGroup(): void {
+  if (registeredGroups[LEGACY_CLI_JID]) {
+    const legacyGroup = registeredGroups[LEGACY_CLI_JID];
+    logger.info(
+      { oldJid: LEGACY_CLI_JID, newJid: CLI_MAIN_JID },
+      'Migrating legacy CLI group',
+    );
+
+    // Create new CLI group with updated JID
+    const newGroup: RegisteredGroup = {
+      name: legacyGroup.name || 'CLI Main',
+      folder: CLI_MAIN_FOLDER,
+      isMain: true,
+      requiresTrigger: false,
+      added_at: legacyGroup.added_at || new Date().toISOString(),
+    };
+    registerGroup(CLI_MAIN_JID, newGroup);
+
+    // Remove old group registration
+    delete registeredGroups[LEGACY_CLI_JID];
+    // Note: The database record for the old JID will remain but be ignored
+    // The messages table uses chat_jid which will show old messages under the new JID
+    // after we update the chats table entry
+
+    logger.info('CLI group migration complete');
+  }
+}
+
+/**
  * Ensure CLI group is auto-registered on startup.
  * CLI uses a dedicated group to prevent routing conflicts with other channels.
  */
 function ensureCliGroup(): void {
-  if (!registeredGroups[CLI_GROUP_JID]) {
+  // First, migrate legacy format if needed
+  migrateCliGroup();
+
+  // Ensure main CLI group exists
+  if (!registeredGroups[CLI_MAIN_JID]) {
     const cliGroup: RegisteredGroup = {
       name: 'CLI Main',
-      folder: CLI_GROUP_FOLDER,
+      folder: CLI_MAIN_FOLDER,
       isMain: true, // CLI doesn't require trigger
       requiresTrigger: false,
       added_at: new Date().toISOString(),
     };
-    registerGroup(CLI_GROUP_JID, cliGroup);
-    logger.info('CLI group auto-registered');
+    registerGroup(CLI_MAIN_JID, cliGroup);
+    logger.info('CLI main group auto-registered');
   }
 }
 
@@ -173,8 +231,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const group = registeredGroups[chatJid];
   if (!group) return true;
 
-  // Check if this is the CLI group (special handling)
-  const isCliGroup = chatJid === CLI_GROUP_JID;
+  // Check if this is a CLI group (special handling)
+  const isCliGroup = isCliGroupJid(chatJid);
 
   const channel = findChannel(channels, chatJid);
   if (!channel && !isCliGroup) {
@@ -465,8 +523,8 @@ async function startMessageLoop(): Promise<void> {
           const group = registeredGroups[chatJid];
           if (!group) continue;
 
-          // Check if this is the CLI group (special handling)
-          const isCliGroup = chatJid === CLI_GROUP_JID;
+          // Check if this is a CLI group (special handling)
+          const isCliGroup = isCliGroupJid(chatJid);
 
           const channel = findChannel(channels, chatJid);
           if (!channel && !isCliGroup) {
@@ -623,29 +681,34 @@ async function main(): Promise<void> {
     // Handle incoming messages from CLI clients
     // CLI uses a fixed group JID to prevent routing conflicts
     if (msg.type === 'message' && msg.text) {
-      const group = registeredGroups[CLI_GROUP_JID];
+      // Determine which CLI group to use
+      const targetFolder = msg.groupFolder || CLI_MAIN_FOLDER;
+      const targetJid = `cli:${targetFolder.replace('cli-', '')}`;
+
+      const group = registeredGroups[targetJid];
       if (!group) {
-        logger.warn('CLI group not found');
+        logger.warn({ folder: targetFolder, jid: targetJid }, 'CLI group not found');
         return;
       }
+
       // Track JID -> channel mapping for reply routing
-      jidToChannel.set(CLI_GROUP_JID, 'cli');
+      jidToChannel.set(targetJid, 'cli');
       logger.info(
-        { text: msg.text?.slice(0, 50) },
+        { text: msg.text?.slice(0, 50), folder: targetFolder },
         'CLI message received, storing with source_channel=cli',
       );
       // Ensure chat metadata exists (required for foreign key constraint)
       storeChatMetadata(
-        CLI_GROUP_JID,
+        targetJid,
         new Date().toISOString(),
-        'CLI Main',
+        group.name,
         'cli',
         true,
       );
       // Store message as if it came from a channel
       storeMessage({
         id: `cli-${Date.now()}`,
-        chat_jid: CLI_GROUP_JID,
+        chat_jid: targetJid,
         sender: 'cli',
         sender_name: 'CLI User',
         content: msg.text,
@@ -655,8 +718,20 @@ async function main(): Promise<void> {
         source_channel: 'cli',
       });
       // Trigger processing
-      queue.enqueueMessageCheck(CLI_GROUP_JID);
+      queue.enqueueMessageCheck(targetJid);
+    } else if (msg.type === 'list_groups') {
+      // Return list of CLI groups
+      logger.debug('CLI list_groups request received');
     }
+  });
+
+  // Register CLI groups list provider
+  ipcServer.onGroupsList(() => {
+    return getCliGroups().map((g) => ({
+      jid: g.jid,
+      name: g.name,
+      folder: g.folder,
+    }));
   });
 
   startSchedulerLoop({

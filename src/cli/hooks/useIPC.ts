@@ -3,7 +3,7 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from '../../config.js';
-import { AgentEvent, CliResponse } from '../types.js';
+import { AgentEvent, CliResponse, GroupInfo } from '../types.js';
 
 const SOCKET_PATH = path.join(DATA_DIR, 'nanoclaw.sock');
 
@@ -18,6 +18,7 @@ export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
   const [connecting, setConnecting] = useState(true);
   const socketRef = useRef<net.Socket | null>(null);
   const bufferRef = useRef('');
+  const groupsCallbackRef = useRef<((groups: GroupInfo[]) => void) | null>(null);
 
   useEffect(() => {
     // Check if socket file exists
@@ -72,6 +73,12 @@ export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
             onEvent(msg.event);
           }
           break;
+        case 'groups_list':
+          if (msg.groups && groupsCallbackRef.current) {
+            groupsCallbackRef.current(msg.groups);
+            groupsCallbackRef.current = null;
+          }
+          break;
       }
     };
 
@@ -80,13 +87,21 @@ export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
     };
   }, []);
 
-  const sendMessage = useCallback((text: string) => {
-    socketRef.current?.write(JSON.stringify({ type: 'message', text }) + '\n');
+  const sendMessage = useCallback((text: string, groupFolder?: string) => {
+    socketRef.current?.write(JSON.stringify({ type: 'message', text, groupFolder }) + '\n');
+  }, []);
+
+  const listGroups = useCallback((): Promise<GroupInfo[]> => {
+    return new Promise((resolve) => {
+      groupsCallbackRef.current = resolve;
+      socketRef.current?.write(JSON.stringify({ type: 'list_groups' }) + '\n');
+    });
   }, []);
 
   return {
     connected,
     connecting,
     sendMessage,
+    listGroups,
   };
 };

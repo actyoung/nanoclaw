@@ -1,0 +1,13 @@
+skill: add-cli-group
+version: 1.0.0
+description: "Add CLI groups for isolated CLI-based agent contexts"
+core_version: 0.1.0
+adds:
+  - scripts/add-cli-group.ts
+modifies: []
+structured:
+  npm_dependencies: {}
+  env_additions: []
+conflicts: []
+depends: []
+test: "npx tsx scripts/add-cli-group.ts --test"
