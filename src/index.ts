@@ -332,14 +332,16 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           await channel?.sendMessage(chatJid, text);
         }
         outputSentToUser = true;
-        // Always broadcast to CLI for monitoring
-        broadcastAgentEvent({
-          type: 'message:sent',
-          groupJid: chatJid,
-          groupFolder: group.folder,
-          timestamp: Date.now(),
-          data: text,
-        });
+        // Only broadcast to CLI if this is a CLI group
+        if (isCliGroup) {
+          broadcastAgentEvent({
+            type: 'message:sent',
+            groupJid: chatJid,
+            groupFolder: group.folder,
+            timestamp: Date.now(),
+            data: text,
+          });
+        }
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -347,12 +349,14 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
     if (result.status === 'success') {
       queue.notifyIdle(chatJid);
-      broadcastAgentEvent({
-        type: 'container:idle',
-        groupJid: chatJid,
-        groupFolder: group.folder,
-        timestamp: Date.now(),
-      });
+      if (isCliGroup) {
+        broadcastAgentEvent({
+          type: 'container:idle',
+          groupJid: chatJid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+        });
+      }
     }
 
     if (result.status === 'error') {
@@ -630,9 +634,9 @@ async function main(): Promise<void> {
       // Mark message source
       msg.source_channel = channelName;
       storeMessage(msg);
-      // Emit message received event for CLI channel
+      // Emit message received event only for CLI groups
       const group = registeredGroups[msg.chat_jid];
-      if (group) {
+      if (group && isCliGroupJid(msg.chat_jid)) {
         broadcastAgentEvent({
           type: 'message:received',
           groupJid: msg.chat_jid,
@@ -687,7 +691,10 @@ async function main(): Promise<void> {
 
       const group = registeredGroups[targetJid];
       if (!group) {
-        logger.warn({ folder: targetFolder, jid: targetJid }, 'CLI group not found');
+        logger.warn(
+          { folder: targetFolder, jid: targetJid },
+          'CLI group not found',
+        );
         return;
       }
 
@@ -750,7 +757,7 @@ async function main(): Promise<void> {
       if (text) {
         await channel.sendMessage(jid, text);
         const group = registeredGroups[jid];
-        if (group) {
+        if (group && isCliGroupJid(jid)) {
           broadcastAgentEvent({
             type: 'message:sent',
             groupJid: jid,

@@ -31,6 +31,13 @@ import { broadcastAgentEvent } from './ipc-server.js';
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
+/**
+ * Check if a JID is a CLI group
+ */
+function isCliGroupJid(jid: string): boolean {
+  return jid.startsWith('cli:');
+}
+
 export interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -316,14 +323,16 @@ export async function runContainerAgent(
 
     onProcess(container, containerName);
 
-    // Emit container started event
-    broadcastAgentEvent({
-      type: 'container:started',
-      groupJid: input.chatJid,
-      groupFolder: group.folder,
-      timestamp: Date.now(),
-      data: { containerName },
-    });
+    // Emit container started event only for CLI groups
+    if (isCliGroupJid(input.chatJid)) {
+      broadcastAgentEvent({
+        type: 'container:started',
+        groupJid: input.chatJid,
+        groupFolder: group.folder,
+        timestamp: Date.now(),
+        data: { containerName },
+      });
+    }
 
     let stdout = '';
     let stderr = '';
@@ -381,14 +390,16 @@ export async function runContainerAgent(
             hadStreamingOutput = true;
             // Activity detected — reset the hard timeout
             resetTimeout();
-            // Emit container output event
-            broadcastAgentEvent({
-              type: 'container:output',
-              groupJid: input.chatJid,
-              groupFolder: group.folder,
-              timestamp: Date.now(),
-              data: parsed.result,
-            });
+            // Emit container output event only for CLI groups
+            if (isCliGroupJid(input.chatJid)) {
+              broadcastAgentEvent({
+                type: 'container:output',
+                groupJid: input.chatJid,
+                groupFolder: group.folder,
+                timestamp: Date.now(),
+                data: parsed.result,
+              });
+            }
             // Call onOutput for all markers (including null results)
             // so idle timers start even for "silent" query completions.
             outputChain = outputChain.then(() => onOutput(parsed));
@@ -460,14 +471,16 @@ export async function runContainerAgent(
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
 
-      // Emit container closed event
-      broadcastAgentEvent({
-        type: 'container:closed',
-        groupJid: input.chatJid,
-        groupFolder: group.folder,
-        timestamp: Date.now(),
-        data: { code, duration, timedOut },
-      });
+      // Emit container closed event only for CLI groups
+      if (isCliGroupJid(input.chatJid)) {
+        broadcastAgentEvent({
+          type: 'container:closed',
+          groupJid: input.chatJid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: { code, duration, timedOut },
+        });
+      }
 
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');

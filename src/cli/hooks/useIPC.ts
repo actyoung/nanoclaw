@@ -18,7 +18,9 @@ export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
   const [connecting, setConnecting] = useState(true);
   const socketRef = useRef<net.Socket | null>(null);
   const bufferRef = useRef('');
-  const groupsCallbackRef = useRef<((groups: GroupInfo[]) => void) | null>(null);
+  const groupsCallbackRef = useRef<((groups: GroupInfo[]) => void) | null>(
+    null,
+  );
 
   useEffect(() => {
     // Check if socket file exists
@@ -88,7 +90,9 @@ export const useIPC = ({ onEvent, onConnected, onError }: UseIPCOptions) => {
   }, []);
 
   const sendMessage = useCallback((text: string, groupFolder?: string) => {
-    socketRef.current?.write(JSON.stringify({ type: 'message', text, groupFolder }) + '\n');
+    socketRef.current?.write(
+      JSON.stringify({ type: 'message', text, groupFolder }) + '\n',
+    );
   }, []);
 
   const listGroups = useCallback((): Promise<GroupInfo[]> => {
