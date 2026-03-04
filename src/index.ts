@@ -36,6 +36,7 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
+import { broadcastAgentEvent, getIpcServer } from './ipc-server.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
@@ -66,6 +67,9 @@ let messageLoopRunning = false;
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
+
+// Track which channel owns each JID for reply routing
+const jidToChannel = new Map<string, string>();
 
 function loadState(): void {
   lastTimestamp = getRouterState('last_timestamp') || '';
@@ -166,6 +170,24 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     if (!anyMessageHasTrigger) return true;
   }
 
+  // Determine the source channel for reply routing
+  // Use the source_channel from the last message, or fall back to the channel that owns this JID
+  const lastMessage = missedMessages[missedMessages.length - 1];
+  const replyChannel = lastMessage.source_channel || jidToChannel.get(chatJid) || channel.name;
+  const isCliSource = replyChannel === 'cli';
+
+  logger.info(
+    {
+      group: group.name,
+      messageCount: missedMessages.length,
+      lastMessageSource: lastMessage.source_channel,
+      jidToChannel: jidToChannel.get(chatJid),
+      replyChannel,
+      isCliSource,
+    },
+    'Processing messages',
+  );
+
   const prompt = formatMessages(missedMessages);
 
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
@@ -174,11 +196,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   lastAgentTimestamp[chatJid] =
     missedMessages[missedMessages.length - 1].timestamp;
   saveState();
-
-  logger.info(
-    { group: group.name, messageCount: missedMessages.length },
-    'Processing messages',
-  );
 
   // Track idle timer for closing stdin when agent is idle
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -209,8 +226,26 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
+        // Route reply based on source channel:
+        // - CLI source: only broadcast to CLI (do not send to messaging channels)
+        // - Other sources: send to the original channel AND broadcast to CLI
+        if (isCliSource) {
+          // CLI-initiated conversation: reply only to CLI
+          logger.info({ group: group.name, text: text.slice(0, 50) }, 'CLI source - NOT sending to channel');
+        } else {
+          // Channel-initiated conversation: reply to the original channel
+          logger.info({ group: group.name, text: text.slice(0, 50), replyChannel }, 'Channel source - sending to channel');
+          await channel.sendMessage(chatJid, text);
+        }
         outputSentToUser = true;
+        // Always broadcast to CLI for monitoring
+        broadcastAgentEvent({
+          type: 'message:sent',
+          groupJid: chatJid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: text,
+        });
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -218,6 +253,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
     if (result.status === 'success') {
       queue.notifyIdle(chatJid);
+      broadcastAgentEvent({
+        type: 'container:idle',
+        groupJid: chatJid,
+        groupFolder: group.folder,
+        timestamp: Date.now(),
+      });
     }
 
     if (result.status === 'error') {
@@ -483,9 +524,26 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  // Channel callbacks (shared by all channels)
-  const channelOpts = {
-    onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),
+  // Helper to create channel-specific callbacks
+  const createChannelOpts = (channelName: string) => ({
+    onMessage: (_chatJid: string, msg: NewMessage) => {
+      // Track JID -> channel mapping for reply routing
+      jidToChannel.set(msg.chat_jid, channelName);
+      // Mark message source
+      msg.source_channel = channelName;
+      storeMessage(msg);
+      // Emit message received event for CLI channel
+      const group = registeredGroups[msg.chat_jid];
+      if (group) {
+        broadcastAgentEvent({
+          type: 'message:received',
+          groupJid: msg.chat_jid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: msg,
+        });
+      }
+    },
     onChatMetadata: (
       chatJid: string,
       timestamp: string,
@@ -494,14 +552,14 @@ async function main(): Promise<void> {
       isGroup?: boolean,
     ) => storeChatMetadata(chatJid, timestamp, name, channel, isGroup),
     registeredGroups: () => registeredGroups,
-  };
+  });
 
   // Create and connect all registered channels.
   // Each channel self-registers via the barrel import above.
   // Factories return null when credentials are missing, so unconfigured channels are skipped.
   for (const channelName of getRegisteredChannelNames()) {
     const factory = getChannelFactory(channelName)!;
-    const channel = factory(channelOpts);
+    const channel = factory(createChannelOpts(channelName));
     if (!channel) {
       logger.warn(
         { channel: channelName },
@@ -518,6 +576,44 @@ async function main(): Promise<void> {
   }
 
   // Start subsystems (independently of connection handler)
+  // Start IPC server for CLI channel communication
+  const ipcServer = getIpcServer();
+  ipcServer.start();
+  ipcServer.onMessage((msg) => {
+    // Handle incoming messages from CLI clients
+    if (msg.type === 'message' && msg.groupJid && msg.text) {
+      const group = registeredGroups[msg.groupJid];
+      if (!group) {
+        logger.warn({ groupJid: msg.groupJid }, 'CLI message for unknown group');
+        return;
+      }
+      // Track JID -> channel mapping for reply routing
+      jidToChannel.set(msg.groupJid, 'cli');
+      logger.info({ groupJid: msg.groupJid, text: msg.text?.slice(0, 50) }, 'CLI message received, storing with source_channel=cli');
+      // Store message as if it came from a channel
+      storeMessage({
+        id: `cli-${Date.now()}`,
+        chat_jid: msg.groupJid,
+        sender: 'cli',
+        sender_name: 'CLI User',
+        content: msg.text,
+        timestamp: new Date().toISOString(),
+        is_from_me: false,
+        is_mentioned: true, // Always trigger for CLI messages
+        source_channel: 'cli',
+      });
+      // Trigger processing
+      queue.enqueueMessageCheck(msg.groupJid);
+    }
+  });
+  ipcServer.onGroupsList(() => {
+    return Object.entries(registeredGroups).map(([jid, g]) => ({
+      jid,
+      name: g.name,
+      folder: g.folder,
+    }));
+  });
+
   startSchedulerLoop({
     registeredGroups: () => registeredGroups,
     getSessions: () => sessions,
@@ -531,14 +627,36 @@ async function main(): Promise<void> {
         return;
       }
       const text = formatOutbound(rawText);
-      if (text) await channel.sendMessage(jid, text);
+      if (text) {
+        await channel.sendMessage(jid, text);
+        const group = registeredGroups[jid];
+        if (group) {
+          broadcastAgentEvent({
+            type: 'message:sent',
+            groupJid: jid,
+            groupFolder: group.folder,
+            timestamp: Date.now(),
+            data: text,
+          });
+        }
+      }
     },
   });
   startIpcWatcher({
-    sendMessage: (jid, text) => {
+    sendMessage: async (jid, text) => {
       const channel = findChannel(channels, jid);
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
-      return channel.sendMessage(jid, text);
+      await channel.sendMessage(jid, text);
+      const group = registeredGroups[jid];
+      if (group) {
+        broadcastAgentEvent({
+          type: 'message:sent',
+          groupJid: jid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: text,
+        });
+      }
     },
     registeredGroups: () => registeredGroups,
     registerGroup,

@@ -33,6 +33,7 @@ function createSchema(database: Database.Database): void {
       is_from_me INTEGER,
       is_bot_message INTEGER DEFAULT 0,
       is_mentioned INTEGER DEFAULT 0,
+      source_channel TEXT,
       PRIMARY KEY (id, chat_jid),
       FOREIGN KEY (chat_jid) REFERENCES chats(jid)
     );
@@ -112,6 +113,15 @@ function createSchema(database: Database.Database): void {
   try {
     database.exec(
       `ALTER TABLE messages ADD COLUMN is_mentioned INTEGER DEFAULT 0`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
+  // Add source_channel column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE messages ADD COLUMN source_channel TEXT`,
     );
   } catch {
     /* column already exists */
@@ -285,7 +295,7 @@ export function setLastGroupSync(): void {
  */
 export function storeMessage(msg: NewMessage): void {
   db.prepare(
-    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, is_mentioned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, is_mentioned, source_channel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     msg.id,
     msg.chat_jid,
@@ -296,6 +306,7 @@ export function storeMessage(msg: NewMessage): void {
     msg.is_from_me ? 1 : 0,
     msg.is_bot_message ? 1 : 0,
     msg.is_mentioned ? 1 : 0,
+    msg.source_channel ?? null,
   );
 }
 
@@ -338,7 +349,7 @@ export function getNewMessages(
   // Filter bot messages using the is_bot_message flag
   // Also exclude legacy bot message format as a backstop
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned, source_channel
     FROM messages
     WHERE timestamp > ? AND chat_jid IN (${placeholders})
       AND is_bot_message = 0
@@ -364,7 +375,7 @@ export function getMessagesSince(
   // Filter bot messages using the is_bot_message flag
   // Also exclude legacy bot message format as a backstop
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned, source_channel
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0
@@ -373,6 +384,27 @@ export function getMessagesSince(
     ORDER BY timestamp
   `;
   return db.prepare(sql).all(chatJid, sinceTimestamp) as NewMessage[];
+}
+
+/**
+ * Get the source channel of the last user message for a given chat.
+ * Used to determine where agent replies should be routed.
+ */
+export function getLastMessageSourceChannel(chatJid: string): string | null {
+  const sql = `
+    SELECT source_channel
+    FROM messages
+    WHERE chat_jid = ?
+      AND is_bot_message = 0
+      AND content NOT LIKE 'Andy:%'
+      AND content != '' AND content IS NOT NULL
+      AND sender != 'agent'
+      AND sender != 'system'
+    ORDER BY timestamp DESC
+    LIMIT 1
+  `;
+  const row = db.prepare(sql).get(chatJid) as { source_channel: string | null } | undefined;
+  return row?.source_channel ?? null;
 }
 
 export function createTask(

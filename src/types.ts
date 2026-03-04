@@ -57,6 +57,12 @@ export interface NewMessage {
    * Note: SQLite returns 0/1, so this can be boolean or number.
    */
   is_mentioned?: boolean | number;
+  /**
+   * Source channel of the message.
+   * 'feishu' | 'telegram' | 'cli' | etc.
+   * Used to route agent replies back to the correct channel.
+   */
+  source_channel?: string;
 }
 
 export interface ScheduledTask {
