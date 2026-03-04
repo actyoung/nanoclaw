@@ -35,6 +35,7 @@ interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  sessionReset?: boolean;
 }
 
 interface SessionEntry {
@@ -190,6 +191,9 @@ function createPreCompactHook(assistantName?: string): HookCallback {
 // be visible to commands Kit runs.
 const SECRET_ENV_VARS = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
 
+// Track if skills were installed during the session
+let skillReloadNeeded = false;
+
 function createSanitizeBashHook(): HookCallback {
   return async (input, _toolUseId, _context) => {
     const preInput = input as PreToolUseHookInput;
@@ -206,6 +210,25 @@ function createSanitizeBashHook(): HookCallback {
         },
       },
     };
+  };
+}
+
+/**
+ * Detect when skills are installed via `skills add` command.
+ * Sets skillReloadNeeded flag so the session can be reset after the query.
+ */
+function createSkillInstallHook(): HookCallback {
+  return async (input, _toolUseId, _context) => {
+    const preInput = input as PreToolUseHookInput;
+    const command = (preInput.tool_input as { command?: string })?.command;
+
+    // Detect skills CLI installation commands
+    if (command && (command.includes('skills add') || command.includes('skills install'))) {
+      log('Detected skills installation command, will reload session after query');
+      skillReloadNeeded = true;
+    }
+
+    return {};
   };
 }
 
@@ -446,7 +469,7 @@ async function runQuery(
       },
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],
-        PreToolUse: [{ matcher: 'Bash', hooks: [createSanitizeBashHook()] }],
+        PreToolUse: [{ matcher: 'Bash', hooks: [createSanitizeBashHook(), createSkillInstallHook()] }],
       },
     }
   })) {
@@ -545,6 +568,16 @@ async function main(): Promise<void> {
         resumeAt = queryResult.lastAssistantUuid;
       }
 
+      // Check if skills were installed during the query - if so, reset session to reload them
+      let sessionReset = false;
+      if (skillReloadNeeded) {
+        log('Skill installation detected, resetting session to reload skills');
+        sessionId = undefined;  // Clear sessionId to force new session on next query
+        resumeAt = undefined;
+        skillReloadNeeded = false;
+        sessionReset = true;
+      }
+
       // If _close was consumed during the query, exit immediately.
       // Don't emit a session-update marker (it would reset the host's
       // idle timer and cause a 30-min delay before the next _close).
@@ -554,7 +587,7 @@ async function main(): Promise<void> {
       }
 
       // Emit session update so host can track it
-      writeOutput({ status: 'success', result: null, newSessionId: sessionId });
+      writeOutput({ status: 'success', result: null, newSessionId: sessionId, sessionReset });
 
       log('Query ended, waiting for next IPC message...');
 

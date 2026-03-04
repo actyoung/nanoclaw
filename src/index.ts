@@ -18,6 +18,7 @@ import {
   ensureContainerRuntimeRunning,
 } from './container-runtime.js';
 import {
+  clearSession,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -291,7 +292,15 @@ async function runAgent(
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
-        if (output.newSessionId) {
+        if (output.sessionReset) {
+          // Session was reset (e.g., skill installation), clear saved session
+          delete sessions[group.folder];
+          clearSession(group.folder);
+          logger.info(
+            { group: group.name },
+            'Session reset by agent (skill reload)',
+          );
+        } else if (output.newSessionId) {
           sessions[group.folder] = output.newSessionId;
           setSession(group.folder, output.newSessionId);
         }
@@ -315,7 +324,15 @@ async function runAgent(
       wrappedOnOutput,
     );
 
-    if (output.newSessionId) {
+    if (output.sessionReset) {
+      // Session was reset (e.g., skill installation), clear saved session
+      delete sessions[group.folder];
+      clearSession(group.folder);
+      logger.info(
+        { group: group.name },
+        'Session reset by agent (skill reload)',
+      );
+    } else if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
       setSession(group.folder, output.newSessionId);
     }
