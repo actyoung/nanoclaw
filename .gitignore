@@ -10,12 +10,12 @@ data/
 logs/
 
 # Groups - runtime directories, templates are in .templates/groups/
-groups/main/
-!groups/main/.gitkeep
-groups/global/
-!groups/global/.gitkeep
-groups/
-!groups/.gitkeep
+/groups/main/
+!/groups/main/.gitkeep
+/groups/global/
+!/groups/global/.gitkeep
+/groups/
+!/groups/.gitkeep
 
 # Secrets
 *.keys.json
