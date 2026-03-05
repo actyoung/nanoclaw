@@ -329,39 +329,38 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
   }
 
   return (
-    <Box flexDirection="row" height="100%" padding={1}>
-      {/* Left panel - Messages (50%) */}
-      <Box flexDirection="column" width="50%" paddingRight={1}>
-        <Header connected={connected} />
+    <Box flexDirection="column" height="100%" padding={1}>
+      <Header connected={connected} />
 
-        {showHelp ? (
-          <Box flexGrow={1}>
-            <Help onClose={() => setShowHelp(false)} />
-          </Box>
-        ) : (
-          <MessageList messages={messages} />
-        )}
+      {showHelp ? (
+        <Box flexGrow={1}>
+          <Help onClose={() => setShowHelp(false)} />
+        </Box>
+      ) : (
+        <MessageList messages={messages} />
+      )}
 
-        <StatusBar status={status} group={selectedGroup?.folder || 'none'} />
-        <InputBox
-          onSubmit={handleSubmit}
-          currentGroup={selectedGroup?.folder ?? null}
-          disabled={showHelp}
-        />
-      </Box>
-
-      {/* Right panel - Thinking (50%) */}
+      {/* Thinking panel - above status bar */}
       <Box
-        width="50%"
+        height={10}
         borderStyle="single"
         padding={1}
         flexDirection="column"
+        marginTop={1}
       >
         <Text bold>Thinking Process</Text>
         <Box flexGrow={1} marginTop={1}>
           <ThinkingPanel content={thinkingContent} />
         </Box>
       </Box>
+
+      <StatusBar status={status} group={selectedGroup?.folder || 'none'} />
+
+      <InputBox
+        onSubmit={handleSubmit}
+        currentGroup={selectedGroup?.folder ?? null}
+        disabled={showHelp}
+      />
     </Box>
   );
 };
