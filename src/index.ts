@@ -265,8 +265,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Determine the source channel for reply routing
   // Use the source_channel from the last message, or fall back to the channel that owns this JID
   const lastMessage = missedMessages[missedMessages.length - 1];
-  const replyChannel =
-    lastMessage.source_channel || channel?.name || 'cli';
+  const replyChannel = lastMessage.source_channel || channel?.name || 'cli';
   const isCliSource = replyChannel === 'cli';
 
   logger.info(
