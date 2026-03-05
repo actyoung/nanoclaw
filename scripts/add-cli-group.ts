@@ -176,6 +176,26 @@ You are ${getAssistantName()}, a personal assistant operating in a CLI environme
   console.log(`  1. Restart the CLI: npm run cli`);
   console.log(`  2. Select "${groupName}" from the group selector`);
   console.log(`  3. Or use: /switch ${groupFolder}`);
+
+  // Container config hint
+  console.log('\n📁 Optional: Add extra directory mounts to the container');
+  console.log('   Example - mount your projects folder:');
+  console.log("     sqlite3 store/messages.db \\");
+  console.log(`       'UPDATE registered_groups SET container_config = "{\\"additionalMounts\\":[{\\"hostPath\\":\\"~/Projects\\",\\"containerPath\\":\\"projects\\",\\"readonly\\":false}]}" WHERE jid = "${groupJid}";' \\`);
+  console.log('\n   To view current config:');
+  console.log(`     sqlite3 store/messages.db 'SELECT container_config FROM registered_groups WHERE jid = "${groupJid}";'`);
+  console.log('\n   Available options:');
+  console.log('     • additionalMounts: Extra directories to mount (hostPath → containerPath)');
+  console.log('     • timeout: Container timeout in ms (default: 1800000 = 30min)');
+  console.log('     • readonly: Set to true for read-only access');
+  console.log('\n   Example with multiple mounts and custom timeout:');
+  console.log('     {');
+  console.log('       "additionalMounts": [');
+  console.log('         {"hostPath": "~/Projects", "containerPath": "projects", "readonly": false},');
+  console.log('         {"hostPath": "~/Documents", "containerPath": "docs", "readonly": true}');
+  console.log('       ],');
+  console.log('       "timeout": 600000');
+  console.log('     }');
 }
 
 // Handle --test flag (just validate the script runs)
