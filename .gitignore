@@ -10,11 +10,16 @@ data/
 logs/
 
 # Groups - runtime directories, templates are in .templates/groups/
-/groups/main/
+# First ignore all groups, then unignore specific files
+/groups/*
+!/groups/main/
+!/groups/global/
+/groups/main/*
 !/groups/main/.gitkeep
-/groups/global/
+!/groups/main/CLAUDE.md
+/groups/global/*
 !/groups/global/.gitkeep
-/groups/
+!/groups/global/CLAUDE.md
 !/groups/.gitkeep
 
 # Secrets
