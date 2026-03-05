@@ -38,6 +38,12 @@ import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
 import { broadcastAgentEvent, getIpcServer } from './ipc-server.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
+import {
+  isSenderAllowed,
+  isTriggerAllowed,
+  loadSenderAllowlist,
+  shouldDropMessage,
+} from './sender-allowlist.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -95,9 +101,6 @@ function getCliGroups(): Array<{ jid: string; folder: string; name: string }> {
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
-
-// Track which channel owns each JID for reply routing
-const jidToChannel = new Map<string, string>();
 
 function loadState(): void {
   lastTimestamp = getRouterState('last_timestamp') || '';
@@ -250,7 +253,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // For non-main groups, check if trigger is required and present
   // Dual-mode: use is_mentioned if available, fall back to TRIGGER_PATTERN
   if (!isMainGroup && group.requiresTrigger !== false) {
-    const anyMessageHasTrigger = missedMessages.some(checkMessageTrigger);
+    const allowlistCfg = loadSenderAllowlist();
+    const anyMessageHasTrigger = missedMessages.some(
+      (m) =>
+        checkMessageTrigger(m) &&
+        (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
+    );
     if (!anyMessageHasTrigger) return true;
   }
 
@@ -258,10 +266,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Use the source_channel from the last message, or fall back to the channel that owns this JID
   const lastMessage = missedMessages[missedMessages.length - 1];
   const replyChannel =
-    lastMessage.source_channel ||
-    jidToChannel.get(chatJid) ||
-    channel?.name ||
-    'cli';
+    lastMessage.source_channel || channel?.name || 'cli';
   const isCliSource = replyChannel === 'cli';
 
   logger.info(
@@ -269,7 +274,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       group: group.name,
       messageCount: missedMessages.length,
       lastMessageSource: lastMessage.source_channel,
-      jidToChannel: jidToChannel.get(chatJid),
       replyChannel,
       isCliSource,
     },
@@ -544,8 +548,13 @@ async function startMessageLoop(): Promise<void> {
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
-            const anyMessageHasTrigger =
-              groupMessages.some(checkMessageTrigger);
+            const allowlistCfg = loadSenderAllowlist();
+            const anyMessageHasTrigger = groupMessages.some(
+              (m) =>
+                checkMessageTrigger(m) &&
+                (m.is_from_me ||
+                  isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
+            );
             if (!anyMessageHasTrigger) continue;
           }
 
@@ -628,18 +637,32 @@ async function main(): Promise<void> {
 
   // Helper to create channel-specific callbacks
   const createChannelOpts = (channelName: string) => ({
-    onMessage: (_chatJid: string, msg: NewMessage) => {
-      // Track JID -> channel mapping for reply routing
-      jidToChannel.set(msg.chat_jid, channelName);
-      // Mark message source
+    onMessage: (chatJid: string, msg: NewMessage) => {
+      // Sender allowlist drop mode: discard messages from denied senders before storing
+      if (!msg.is_from_me && !msg.is_bot_message && registeredGroups[chatJid]) {
+        const cfg = loadSenderAllowlist();
+        if (
+          shouldDropMessage(chatJid, cfg) &&
+          !isSenderAllowed(chatJid, msg.sender, cfg)
+        ) {
+          if (cfg.logDenied) {
+            logger.debug(
+              { chatJid, sender: msg.sender },
+              'sender-allowlist: dropping message (drop mode)',
+            );
+          }
+          return;
+        }
+      }
+      // Mark message source for reply routing
       msg.source_channel = channelName;
       storeMessage(msg);
       // Emit message received event only for CLI groups
-      const group = registeredGroups[msg.chat_jid];
-      if (group && isCliGroupJid(msg.chat_jid)) {
+      const group = registeredGroups[chatJid];
+      if (group && isCliGroupJid(chatJid)) {
         broadcastAgentEvent({
           type: 'message:received',
-          groupJid: msg.chat_jid,
+          groupJid: chatJid,
           groupFolder: group.folder,
           timestamp: Date.now(),
           data: msg,
@@ -698,8 +721,6 @@ async function main(): Promise<void> {
         return;
       }
 
-      // Track JID -> channel mapping for reply routing
-      jidToChannel.set(targetJid, 'cli');
       logger.info(
         { text: msg.text?.slice(0, 50), folder: targetFolder },
         'CLI message received, storing with source_channel=cli',

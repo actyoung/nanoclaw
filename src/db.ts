@@ -347,7 +347,7 @@ export function getNewMessages(
   // Filter bot messages using the is_bot_message flag
   // Also exclude legacy bot message format as a backstop
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned, source_channel
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_mentioned, source_channel
     FROM messages
     WHERE timestamp > ? AND chat_jid IN (${placeholders})
       AND is_bot_message = 0
@@ -373,7 +373,7 @@ export function getMessagesSince(
   // Filter bot messages using the is_bot_message flag
   // Also exclude legacy bot message format as a backstop
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_mentioned, source_channel
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_mentioned, source_channel
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0

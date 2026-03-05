@@ -11,8 +11,10 @@ logs/
 
 # Groups - runtime directories, templates are in .templates/groups/
 groups/main/
+!groups/main/.gitkeep
 groups/global/
-groups/*/
+!groups/global/.gitkeep
+groups/
 !groups/.gitkeep
 
 # Secrets
