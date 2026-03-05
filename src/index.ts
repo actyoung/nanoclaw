@@ -314,8 +314,24 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           ? result.result
           : JSON.stringify(result.result);
       // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
+      // Extract thinking content from <internal> tags
+      const thinkingMatches = raw.match(/<internal>([\s\S]*?)<\/internal>/g);
+      const thinking = thinkingMatches
+        ?.map((m) => m.replace(/<\/?internal>/g, '').trim())
+        .join('\n');
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
+
+      // Broadcast thinking content for CLI groups (before stripping)
+      if (thinking && isCliGroup) {
+        broadcastAgentEvent({
+          type: 'agent:thinking',
+          groupJid: chatJid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: thinking,
+        });
+      }
+
       if (text) {
         // Route reply based on source channel:
         // - CLI source: only broadcast to CLI (do not send to messaging channels)

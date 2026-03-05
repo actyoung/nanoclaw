@@ -15,7 +15,8 @@ export interface AgentEvent {
     | 'container:idle'
     | 'container:closed'
     | 'message:received'
-    | 'message:sent';
+    | 'message:sent'
+    | 'agent:thinking';
   groupJid: string;
   groupFolder: string;
   timestamp: number;
@@ -29,6 +30,7 @@ export interface Message {
   content: string;
   timestamp: number;
   groupJid?: string;
+  thinking?: string;
 }
 
 export type Status = 'idle' | 'starting' | 'processing';

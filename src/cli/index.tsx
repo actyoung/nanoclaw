@@ -5,4 +5,7 @@
 import { render } from 'ink';
 import { App } from './components/App.js';
 
-render(<App />);
+const args = process.argv.slice(2);
+const debug = args.includes('--debug');
+
+render(<App debug={debug} />);

@@ -15,7 +15,8 @@ export interface AgentEvent {
     | 'container:idle'
     | 'container:closed'
     | 'message:received'
-    | 'message:sent';
+    | 'message:sent'
+    | 'agent:thinking';
   groupJid: string;
   groupFolder: string;
   timestamp: number;

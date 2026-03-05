@@ -36,6 +36,7 @@ interface ContainerOutput {
   newSessionId?: string;
   error?: string;
   sessionReset?: boolean;
+  isThinking?: boolean;
 }
 
 interface SessionEntry {
@@ -500,6 +501,48 @@ async function runQuery(
         result: textResult || null,
         newSessionId
       });
+    }
+
+    // Capture thinking content from assistant messages
+    if (message.type === 'assistant') {
+      const assistantMsg = message as {
+        reasoning?: string;
+        thinking?: string;
+        content?: unknown;
+        message?: {
+          content?: Array<{ type: string; text?: string; thinking?: string; reasoning?: string }> | string
+        }
+      };
+
+      let thinkingContent: string | undefined;
+
+      // 1. Check direct reasoning/thinking fields
+      if (assistantMsg.reasoning || assistantMsg.thinking) {
+        thinkingContent = assistantMsg.reasoning || assistantMsg.thinking;
+      }
+
+      // 2. Check message.content for thinking blocks
+      if (!thinkingContent && assistantMsg.message?.content) {
+        const content = assistantMsg.message.content;
+        if (Array.isArray(content)) {
+          for (const item of content) {
+            if (item.type === 'thinking' || item.thinking || item.reasoning) {
+              thinkingContent = item.thinking || item.reasoning || (item.type === 'thinking' ? item.text : undefined);
+              if (thinkingContent) break;
+            }
+          }
+        }
+      }
+
+      if (thinkingContent) {
+        // Wrap thinking content in <internal> tags so the host can extract and display it
+        writeOutput({
+          status: 'success',
+          result: `<internal>${thinkingContent}</internal>`,
+          newSessionId,
+          isThinking: true
+        });
+      }
     }
   }
 

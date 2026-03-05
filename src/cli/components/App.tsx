@@ -6,27 +6,53 @@ import { MessageList } from './MessageList.js';
 import { InputBox } from './InputBox.js';
 import { StatusBar } from './StatusBar.js';
 import { Help } from './Help.js';
+import { ThinkingPanel } from './ThinkingPanel.js';
 import { AgentEvent, Message, GroupInfo } from '../types.js';
 
 const CLI_MAIN_JID = 'cli:main';
 const CLI_MAIN_FOLDER = 'cli-main';
 
-export const App: React.FC = () => {
+interface AppProps {
+  debug?: boolean;
+}
+
+export const App: React.FC<AppProps> = ({ debug = false }) => {
   const { exit } = useApp();
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<'idle' | 'starting' | 'processing'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [thinkingContent, setThinkingContent] = useState<string>('');
 
   // Group selection state
   const [cliGroups, setCliGroups] = useState<GroupInfo[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<GroupInfo | null>(null);
+  const selectedGroupRef = React.useRef<GroupInfo | null>(null);
   const [showGroupSelector, setShowGroupSelector] = useState(false);
   const [selectorIndex, setSelectorIndex] = useState(0);
 
+  // Keep ref in sync with state to avoid closure issues in callbacks
+  useEffect(() => {
+    selectedGroupRef.current = selectedGroup;
+  }, [selectedGroup]);
+
   const handleEvent = useCallback((event: AgentEvent) => {
+    // Use ref to get latest value and avoid closure issues
+    const currentGroup = selectedGroupRef.current;
     // Only show messages from the currently selected group
-    if (selectedGroup && event.groupJid !== selectedGroup.jid) return;
+    // If no group selected yet, allow events from cli:* groups (auto-select on first event)
+    if (currentGroup && event.groupJid !== currentGroup.jid) return;
+    // If no group selected but event is from a cli group, auto-select it
+    if (!currentGroup && event.groupJid.startsWith('cli:')) {
+      // Create default group info
+      const defaultGroup: GroupInfo = {
+        jid: event.groupJid,
+        name: 'CLI Main',
+        folder: 'cli-main',
+      };
+      setSelectedGroup(defaultGroup);
+      subscribeToGroup(defaultGroup.folder);
+    }
 
     switch (event.type) {
       case 'container:started':
@@ -41,8 +67,18 @@ export const App: React.FC = () => {
       case 'container:closed':
         setStatus('idle');
         break;
+      case 'agent:thinking': {
+        const thinking = typeof event.data === 'string' ? event.data : '';
+        if (debug) {
+          // eslint-disable-next-line no-console
+          console.error('[CLI Debug] Received thinking:', thinking.slice(0, 100));
+        }
+        setThinkingContent((prev) => prev + (prev ? '\n' : '') + thinking);
+        break;
+      }
       case 'message:received': {
-        // Message from CLI channel
+        // Message from CLI channel - clear thinking on new conversation turn
+        setThinkingContent('');
         const data = event.data as {
           sender_name: string;
           content: string;
@@ -80,7 +116,7 @@ export const App: React.FC = () => {
         break;
       }
     }
-  }, [selectedGroup]);
+  }, []);
 
   const { connected, sendMessage, listGroups, subscribeToGroup } = useIPC({
     onEvent: handleEvent,
@@ -154,6 +190,7 @@ export const App: React.FC = () => {
               setSelectedGroup(targetGroup);
               subscribeToGroup(targetGroup.folder); // Subscribe to new group
               setMessages([]); // Clear messages when switching
+              setThinkingContent(''); // Clear thinking when switching
               setMessages((prev) => [
                 ...prev,
                 {
@@ -209,6 +246,7 @@ export const App: React.FC = () => {
 
       // Send message to selected CLI group
       // Add user message to local display immediately
+      setThinkingContent(''); // Clear thinking on new user message
       setMessages((prev) => [
         ...prev,
         {
@@ -291,26 +329,39 @@ export const App: React.FC = () => {
   }
 
   return (
-    <Box flexDirection="column" height="100%" padding={1}>
-      <Header connected={connected} />
+    <Box flexDirection="row" height="100%" padding={1}>
+      {/* Left panel - Messages (50%) */}
+      <Box flexDirection="column" width="50%" paddingRight={1}>
+        <Header connected={connected} />
 
-      {showHelp ? (
-        <Box flexGrow={1}>
-          <Help onClose={() => setShowHelp(false)} />
+        {showHelp ? (
+          <Box flexGrow={1}>
+            <Help onClose={() => setShowHelp(false)} />
+          </Box>
+        ) : (
+          <MessageList messages={messages} />
+        )}
+
+        <StatusBar status={status} group={selectedGroup?.folder || 'none'} />
+        <InputBox
+          onSubmit={handleSubmit}
+          currentGroup={selectedGroup?.folder ?? null}
+          disabled={showHelp}
+        />
+      </Box>
+
+      {/* Right panel - Thinking (50%) */}
+      <Box
+        width="50%"
+        borderStyle="single"
+        padding={1}
+        flexDirection="column"
+      >
+        <Text bold>Thinking Process</Text>
+        <Box flexGrow={1} marginTop={1}>
+          <ThinkingPanel content={thinkingContent} />
         </Box>
-      ) : (
-        <MessageList messages={messages} />
-      )}
-
-      <StatusBar
-        status={status}
-        group={selectedGroup?.folder || 'none'}
-      />
-      <InputBox
-        onSubmit={handleSubmit}
-        currentGroup={selectedGroup?.folder ?? null}
-        disabled={showHelp}
-      />
+      </Box>
     </Box>
   );
 };
