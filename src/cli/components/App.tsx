@@ -101,13 +101,24 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
       }
       case 'message:sent': {
         // Agent reply - show as incoming from agent
-        const text = typeof event.data === 'string' ? event.data : '';
+        let text: string;
+        let senderName: string | undefined;
+        if (typeof event.data === 'string') {
+          text = event.data;
+        } else if (event.data && typeof event.data === 'object') {
+          const data = event.data as { text?: string; senderName?: string };
+          text = data.text || '';
+          senderName = data.senderName;
+        } else {
+          text = '';
+        }
         setMessages((prev) => [
           ...prev,
           {
             id: `${Date.now()}-${Math.random()}`,
             type: 'received',
             sender: 'agent',
+            senderName,
             content: text,
             timestamp: Date.now(),
             groupJid: event.groupJid,

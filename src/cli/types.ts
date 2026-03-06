@@ -27,6 +27,7 @@ export interface Message {
   id: string;
   type: 'sent' | 'received';
   sender: string;
+  senderName?: string; // Display name for agent (e.g., group name)
   content: string;
   timestamp: number;
   groupJid?: string;

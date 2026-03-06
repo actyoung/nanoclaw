@@ -358,7 +358,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
             groupJid: chatJid,
             groupFolder: group.folder,
             timestamp: Date.now(),
-            data: text,
+            data: {
+              text,
+              senderName: group.name,
+            },
           });
         }
       }
@@ -799,7 +802,10 @@ async function main(): Promise<void> {
             groupJid: jid,
             groupFolder: group.folder,
             timestamp: Date.now(),
-            data: text,
+            data: {
+              text,
+              senderName: group.name,
+            },
           });
         }
       }
@@ -817,7 +823,10 @@ async function main(): Promise<void> {
           groupJid: jid,
           groupFolder: group.folder,
           timestamp: Date.now(),
-          data: text,
+          data: {
+            text,
+            senderName: group.name,
+          },
         });
       }
     },

@@ -27,6 +27,7 @@
     "ink-big-text": "^2.0.0",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
+    "marked": "^17.0.4",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "react": "^19.2.4",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/marked": "^5.0.2",
     "@types/node": "^22.10.0",
     "@types/react": "^19.2.14",
     "@vitest/coverage-v8": "^4.0.18",
