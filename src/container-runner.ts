@@ -171,6 +171,29 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Per-group Go and Rust caches: persisted to host, writable by any UID
+  const goDir = path.join(DATA_DIR, 'sessions', group.folder, 'go');
+  const cargoDir = path.join(DATA_DIR, 'sessions', group.folder, '.cargo');
+  const rustupDir = path.join(DATA_DIR, 'sessions', group.folder, '.rustup');
+  fs.mkdirSync(goDir, { recursive: true });
+  fs.mkdirSync(cargoDir, { recursive: true });
+  fs.mkdirSync(rustupDir, { recursive: true });
+  mounts.push({
+    hostPath: goDir,
+    containerPath: '/home/node/go',
+    readonly: false,
+  });
+  mounts.push({
+    hostPath: cargoDir,
+    containerPath: '/home/node/.cargo',
+    readonly: false,
+  });
+  mounts.push({
+    hostPath: rustupDir,
+    containerPath: '/home/node/.rustup',
+    readonly: false,
+  });
+
   // Per-group IPC namespace: each group gets its own IPC directory
   // This prevents cross-group privilege escalation via IPC
   const groupIpcDir = resolveGroupIpcPath(group.folder);
