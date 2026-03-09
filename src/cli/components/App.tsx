@@ -351,19 +351,21 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         <MessageList messages={messages} />
       )}
 
-      {/* Thinking panel - above status bar */}
-      <Box
-        height={10}
-        borderStyle="single"
-        padding={1}
-        flexDirection="column"
-        marginTop={1}
-      >
-        <Text bold>Thinking Process</Text>
-        <Box flexGrow={1} marginTop={1}>
-          <ThinkingPanel content={thinkingContent} />
+      {/* Thinking panel - above status bar, auto-height */}
+      {thinkingContent && (
+        <Box
+          borderStyle="single"
+          padding={1}
+          flexDirection="column"
+          marginTop={1}
+          flexShrink={0}
+        >
+          <Text bold>Thinking Process</Text>
+          <Box marginTop={1}>
+            <ThinkingPanel content={thinkingContent} />
+          </Box>
         </Box>
-      </Box>
+      )}
 
       <StatusBar status={status} group={selectedGroup?.folder || 'none'} />
 
