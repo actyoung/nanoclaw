@@ -16,7 +16,8 @@ export interface AgentEvent {
     | 'container:closed'
     | 'message:received'
     | 'message:sent'
-    | 'agent:thinking';
+    | 'agent:thinking'
+    | 'api:request';
   groupJid: string;
   groupFolder: string;
   timestamp: number;

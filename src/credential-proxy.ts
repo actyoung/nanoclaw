@@ -16,6 +16,7 @@ import { request as httpRequest, RequestOptions } from 'http';
 
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
+import { broadcastAgentEvent } from './ipc-server.js';
 
 export type AuthMode = 'api-key' | 'oauth';
 
@@ -50,6 +51,52 @@ export function startCredentialProxy(
       req.on('data', (c) => chunks.push(c));
       req.on('end', () => {
         const body = Buffer.concat(chunks);
+
+        // Extract group folder from URL path for CLI debug mode
+        // URL format: /{groupFolder}/v1/messages
+        const urlPathMatch = req.url?.match(/^\/([^\/]+)(\/v1\/)/);
+        const groupFolder = urlPathMatch ? urlPathMatch[1] : undefined;
+        const isCliGroup = !!groupFolder && groupFolder.startsWith('cli-');
+        let cleanPath = req.url || '/';
+
+        // Remove group folder prefix from URL if present
+        if (groupFolder && req.url?.startsWith(`/${groupFolder}/`)) {
+          cleanPath = req.url.slice(`/${groupFolder}`.length);
+        }
+
+        // Broadcast API request for CLI debug mode
+        if (isCliGroup) {
+          try {
+            const requestData = JSON.parse(body.toString());
+            const firstMessage = requestData.messages?.[0];
+            const firstContent = firstMessage?.content;
+            let firstPreview = '';
+            if (typeof firstContent === 'string') {
+              firstPreview = firstContent.slice(0, 100);
+            } else if (Array.isArray(firstContent)) {
+              const textBlock = firstContent.find((c: { type?: string; text?: string }) => c.type === 'text' || c.text);
+              firstPreview = textBlock?.text?.slice(0, 100) || '';
+            }
+
+            // Generate groupJid to match index.ts logic: cli:${folder.replace('cli-', '')}
+            const groupJid = `cli:${groupFolder!.replace('cli-', '')}`;
+            broadcastAgentEvent({
+              type: 'api:request',
+              groupJid,
+              groupFolder: groupFolder!,
+              timestamp: Date.now(),
+              data: {
+                model: requestData.model,
+                messageCount: requestData.messages?.length,
+                maxTokens: requestData.max_tokens,
+                firstMessagePreview: firstPreview.length > 0 ? `${firstPreview}...` : '',
+              },
+            });
+          } catch {
+            // Ignore parse errors
+          }
+        }
+
         const headers: Record<string, string | number | string[] | undefined> =
           {
             ...(req.headers as Record<string, string>),
@@ -79,10 +126,9 @@ export function startCredentialProxy(
           }
         }
 
-        // Build upstream path: preserve base URL path prefix + request path
+        // Build upstream path: preserve base URL path prefix + clean request path
         const basePath = upstreamUrl.pathname.replace(/\/$/, '');
-        const requestPath = req.url || '/';
-        const upstreamPath = basePath + requestPath;
+        const upstreamPath = basePath + cleanPath;
 
         const upstream = makeRequest(
           {

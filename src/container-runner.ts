@@ -256,10 +256,13 @@ function buildContainerArgs(
   args.push('-e', `TZ=${TIMEZONE}`);
 
   // Route API traffic through the credential proxy (containers never see real secrets)
-  args.push(
-    '-e',
-    `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
-  );
+  const groupFolder = group?.folder || 'unknown';
+  const isCliGroup = groupFolder.startsWith('cli-');
+  // For CLI groups, embed group folder in URL path so credential proxy can identify it
+  const baseUrl = isCliGroup
+    ? `http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}/${groupFolder}`
+    : `http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`;
+  args.push('-e', `ANTHROPIC_BASE_URL=${baseUrl}`);
 
   // Mirror the host's auth method with a placeholder value.
   // API key mode: SDK sends x-api-key, proxy replaces with real key.
@@ -326,11 +329,8 @@ export async function runContainerAgent(
     {
       group: group.name,
       containerName,
-      mounts: mounts.map(
-        (m) =>
-          `${m.hostPath} -> ${m.containerPath}${m.readonly ? ' (ro)' : ''}`,
-      ),
-      containerArgs: containerArgs.join(' '),
+      groupFolder: group.folder,
+      isCliGroup: group.folder.startsWith('cli-'),
     },
     'Container mount configuration',
   );

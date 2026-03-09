@@ -7,6 +7,7 @@ import { InputBox } from './InputBox.js';
 import { StatusBar } from './StatusBar.js';
 import { Help } from './Help.js';
 import { ThinkingPanel } from './ThinkingPanel.js';
+import { ApiRequestPanel } from './ApiRequestPanel.js';
 import { AgentEvent, Message, GroupInfo } from '../types.js';
 
 const CLI_MAIN_JID = 'cli:main';
@@ -24,6 +25,13 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
   const [showHelp, setShowHelp] = useState(false);
   const [thinkingContent, setThinkingContent] = useState<string>('');
   const [hasActiveThinking, setHasActiveThinking] = useState(false);
+  const [apiRequestData, setApiRequestData] = useState<{
+    model?: string;
+    messageCount?: number;
+    maxTokens?: number;
+    firstMessagePreview?: string;
+  } | null>(null);
+  const [hasActiveApiRequest, setHasActiveApiRequest] = useState(false);
   const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Group selection state
@@ -69,6 +77,17 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
           idleTimeoutRef.current = null;
         }
         break;
+      case 'api:request': {
+        const data = event.data as {
+          model?: string;
+          messageCount?: number;
+          maxTokens?: number;
+          firstMessagePreview?: string;
+        };
+        setApiRequestData(data);
+        setHasActiveApiRequest(true);
+        break;
+      }
       case 'container:idle':
         // Delay idle transition to prevent flickering
         if (!idleTimeoutRef.current) {
@@ -82,6 +101,7 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
       case 'container:closed':
         setStatus('idle');
         setHasActiveThinking(false);
+        setHasActiveApiRequest(false);
         if (idleTimeoutRef.current) {
           clearTimeout(idleTimeoutRef.current);
           idleTimeoutRef.current = null;
@@ -106,6 +126,8 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         // Message from CLI channel - clear thinking on new conversation turn
         setThinkingContent('');
         setHasActiveThinking(false);
+        setApiRequestData(null);
+        setHasActiveApiRequest(false);
         if (idleTimeoutRef.current) {
           clearTimeout(idleTimeoutRef.current);
           idleTimeoutRef.current = null;
@@ -157,6 +179,7 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         ]);
         // Agent finished replying - mark thinking as inactive
         setHasActiveThinking(false);
+        setHasActiveApiRequest(false);
         if (idleTimeoutRef.current) {
           clearTimeout(idleTimeoutRef.current);
           idleTimeoutRef.current = null;
@@ -402,6 +425,26 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
           <Box marginTop={1}>
             <ThinkingPanel content={thinkingContent} isActive={hasActiveThinking} />
           </Box>
+        </Box>
+      )}
+
+      {/* API Request panel - only in debug mode */}
+      {debug && apiRequestData && (
+        <Box
+          borderStyle="single"
+          borderColor="yellow"
+          padding={1}
+          flexDirection="column"
+          marginTop={1}
+          flexShrink={0}
+        >
+          <ApiRequestPanel
+            model={apiRequestData.model}
+            messageCount={apiRequestData.messageCount}
+            maxTokens={apiRequestData.maxTokens}
+            firstMessagePreview={apiRequestData.firstMessagePreview}
+            isActive={hasActiveApiRequest}
+          />
         </Box>
       )}
 
