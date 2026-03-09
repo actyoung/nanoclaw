@@ -362,7 +362,7 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         >
           <Text bold>Thinking Process</Text>
           <Box marginTop={1}>
-            <ThinkingPanel content={thinkingContent} />
+            <ThinkingPanel content={thinkingContent} isActive={status === 'processing'} />
           </Box>
         </Box>
       )}
