@@ -13,10 +13,13 @@
 import { createServer, Server } from 'http';
 import { request as httpsRequest } from 'https';
 import { request as httpRequest, RequestOptions } from 'http';
+import { writeFileSync, mkdirSync } from 'fs';
+import { resolve as pathResolve } from 'path';
 
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 import { broadcastAgentEvent } from './ipc-server.js';
+import { PROJECT_ROOT } from './config.js';
 
 export type AuthMode = 'api-key' | 'oauth';
 
@@ -64,7 +67,8 @@ export function startCredentialProxy(
           cleanPath = req.url.slice(`/${groupFolder}`.length);
         }
 
-        // Broadcast API request for CLI debug mode
+        // Log API request to file for CLI debug mode (only when LOG_LEVEL=debug)
+        const isDebugMode = process.env.LOG_LEVEL === 'debug' || process.env.LOG_LEVEL === 'trace';
         if (isCliGroup) {
           try {
             const requestData = JSON.parse(body.toString());
@@ -74,12 +78,50 @@ export function startCredentialProxy(
             if (typeof firstContent === 'string') {
               firstPreview = firstContent.slice(0, 100);
             } else if (Array.isArray(firstContent)) {
-              const textBlock = firstContent.find((c: { type?: string; text?: string }) => c.type === 'text' || c.text);
+              const textBlock = firstContent.find(
+                (c: { type?: string; text?: string }) =>
+                  c.type === 'text' || c.text,
+              );
               firstPreview = textBlock?.text?.slice(0, 100) || '';
             }
 
             // Generate groupJid to match index.ts logic: cli:${folder.replace('cli-', '')}
             const groupJid = `cli:${groupFolder!.replace('cli-', '')}`;
+
+            // Write full request to log file only in debug mode
+            if (isDebugMode) {
+              const logDir = pathResolve(
+                PROJECT_ROOT,
+                'logs',
+                'api-requests',
+                groupFolder!,
+              );
+              mkdirSync(logDir, { recursive: true });
+
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const sessionId = requestData.session_id || 'unknown';
+              const logFile = pathResolve(
+                logDir,
+                `api-request-${groupFolder}-${sessionId}-${timestamp}.json`,
+              );
+
+              writeFileSync(
+                logFile,
+                JSON.stringify(
+                  {
+                    timestamp: Date.now(),
+                    model: requestData.model,
+                    messageCount: requestData.messages?.length,
+                    maxTokens: requestData.max_tokens,
+                    requestBody: requestData,
+                  },
+                  null,
+                  2,
+                ),
+              );
+            }
+
+            // Broadcast simplified info (without requestBody)
             broadcastAgentEvent({
               type: 'api:request',
               groupJid,
@@ -89,7 +131,8 @@ export function startCredentialProxy(
                 model: requestData.model,
                 messageCount: requestData.messages?.length,
                 maxTokens: requestData.max_tokens,
-                firstMessagePreview: firstPreview.length > 0 ? `${firstPreview}...` : '',
+                firstMessagePreview:
+                  firstPreview.length > 0 ? `${firstPreview}...` : '',
               },
             });
           } catch {

@@ -30,7 +30,7 @@ export const ApiRequestPanel: React.FC<ApiRequestPanelProps> = ({
   maxTokens,
   firstMessagePreview,
   isActive = true,
-}) => {
+}): React.ReactElement => {
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
