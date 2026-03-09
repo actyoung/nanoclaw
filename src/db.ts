@@ -340,23 +340,30 @@ export function storeMessageDirect(msg: {
 export function getNewMessages(
   jids: string[],
   lastTimestamp: string,
+  botPrefix: string,
+  limit: number = 200,
 ): { messages: NewMessage[]; newTimestamp: string } {
   if (jids.length === 0) return { messages: [], newTimestamp: lastTimestamp };
 
   const placeholders = jids.map(() => '?').join(',');
-  // Filter bot messages using the is_bot_message flag
-  // Also exclude legacy bot message format as a backstop
+  // Filter bot messages using both the is_bot_message flag AND the content
+  // prefix as a backstop for messages written before the migration ran.
+  // Subquery takes the N most recent, outer query re-sorts chronologically.
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_mentioned, source_channel
-    FROM messages
-    WHERE timestamp > ? AND chat_jid IN (${placeholders})
-      AND is_bot_message = 0
-      AND content NOT LIKE 'Andy:%'
-      AND content != '' AND content IS NOT NULL
-    ORDER BY timestamp
+    SELECT * FROM (
+      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_mentioned, source_channel
+      FROM messages
+      WHERE timestamp > ? AND chat_jid IN (${placeholders})
+        AND is_bot_message = 0 AND content NOT LIKE ?
+        AND content != '' AND content IS NOT NULL
+      ORDER BY timestamp DESC
+      LIMIT ?
+    ) ORDER BY timestamp
   `;
 
-  const rows = db.prepare(sql).all(lastTimestamp, ...jids) as NewMessage[];
+  const rows = db
+    .prepare(sql)
+    .all(lastTimestamp, ...jids, `${botPrefix}:%`, limit) as NewMessage[];
 
   let newTimestamp = lastTimestamp;
   for (const row of rows) {
@@ -369,19 +376,26 @@ export function getNewMessages(
 export function getMessagesSince(
   chatJid: string,
   sinceTimestamp: string,
+  botPrefix: string,
+  limit: number = 200,
 ): NewMessage[] {
-  // Filter bot messages using the is_bot_message flag
-  // Also exclude legacy bot message format as a backstop
+  // Filter bot messages using both the is_bot_message flag AND the content
+  // prefix as a backstop for messages written before the migration ran.
+  // Subquery takes the N most recent, outer query re-sorts chronologically.
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_mentioned, source_channel
-    FROM messages
-    WHERE chat_jid = ? AND timestamp > ?
-      AND is_bot_message = 0
-      AND content NOT LIKE 'Andy:%'
-      AND content != '' AND content IS NOT NULL
-    ORDER BY timestamp
+    SELECT * FROM (
+      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_mentioned, source_channel
+      FROM messages
+      WHERE chat_jid = ? AND timestamp > ?
+        AND is_bot_message = 0 AND content NOT LIKE ?
+        AND content != '' AND content IS NOT NULL
+      ORDER BY timestamp DESC
+      LIMIT ?
+    ) ORDER BY timestamp
   `;
-  return db.prepare(sql).all(chatJid, sinceTimestamp) as NewMessage[];
+  return db
+    .prepare(sql)
+    .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as NewMessage[];
 }
 
 /**
@@ -394,7 +408,6 @@ export function getLastMessageSourceChannel(chatJid: string): string | null {
     FROM messages
     WHERE chat_jid = ?
       AND is_bot_message = 0
-      AND content NOT LIKE 'Andy:%'
       AND content != '' AND content IS NOT NULL
       AND sender != 'agent'
       AND sender != 'system'

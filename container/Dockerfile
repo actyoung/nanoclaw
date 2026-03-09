@@ -111,7 +111,7 @@ RUN curl -LO https://github.com/lsd-rs/lsd/releases/download/v1.0.0/lsd_1.0.0_am
 # Starship
 RUN curl -sS https://starship.rs/install.sh | sh -s -- -y || \
     (echo "Starship install failed, retrying..." && \
-     curl -sS https://starship.rs/install.sh | sh -s -- -y)
+    curl -sS https://starship.rs/install.sh | sh -s -- -y)
 
 # fzf
 RUN git clone --depth 1 https://github.com/junegunn/fzf.git /home/node/.fzf && \
@@ -164,7 +164,7 @@ RUN echo '\
     export PATH=$PATH:/home/node/.cargo/bin\n\
     \n\
     [ -f /home/node/.fzf.zsh ] && source /home/node/.fzf.zsh\n\
-' >> /home/node/.zshrc
+    ' >> /home/node/.zshrc
 
 # 设置默认 shell
 RUN chsh -s /bin/zsh node
@@ -200,6 +200,10 @@ COPY agent-runner/ ./
 RUN npm run build
 
 # Entrypoint（也经常变动）
+# Create entrypoint script
+# Container input (prompt, group info) is passed via stdin JSON.
+# Credentials are injected by the host's credential proxy — never passed here.
+# Follow-up messages arrive via IPC files in /workspace/ipc/input/
 RUN printf '#!/bin/bash\nset -e\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 USER node

@@ -4,13 +4,20 @@ import path from 'path';
 import { readEnvFile } from './env.js';
 
 // Read config values from .env (falls back to process.env).
-// Secrets are NOT read here — they stay on disk and are loaded only
-// where needed (container-runner.ts) to avoid leaking to child processes.
+// Secrets (API keys, tokens) are NOT read here — they are loaded only
+// by the credential proxy (credential-proxy.ts), never exposed to containers.
 const envConfig = readEnvFile([
   'FEISHU_APP_ID',
   'FEISHU_APP_SECRET',
   'ASSISTANT_NAME',
+  'ASSISTANT_HAS_OWN_NUMBER',
 ]);
+
+export const ASSISTANT_NAME =
+  process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
+export const ASSISTANT_HAS_OWN_NUMBER =
+  (process.env.ASSISTANT_HAS_OWN_NUMBER ||
+    envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
@@ -45,6 +52,10 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
   process.env.CONTAINER_MAX_OUTPUT_SIZE || '10485760',
   10,
 ); // 10MB default
+export const CREDENTIAL_PROXY_PORT = parseInt(
+  process.env.CREDENTIAL_PROXY_PORT || '3001',
+  10,
+);
 export const IPC_POLL_INTERVAL = 1000;
 export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min default — how long to keep container alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
@@ -62,10 +73,6 @@ export const FEISHU_APP_ID =
   process.env.FEISHU_APP_ID || envConfig.FEISHU_APP_ID || '';
 export const FEISHU_APP_SECRET =
   process.env.FEISHU_APP_SECRET || envConfig.FEISHU_APP_SECRET || '';
-
-// Assistant name and trigger pattern for message matching
-export const ASSISTANT_NAME =
-  process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'AI Assistant';
 
 // Trigger pattern: matches @assistant_name at the start of message
 // Example: "@AI Assistant hello" or "@AI Assistant: hello"
