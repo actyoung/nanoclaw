@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { useIPC } from '../hooks/useIPC.js';
 import { Header } from './Header.js';
@@ -23,6 +23,8 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [thinkingContent, setThinkingContent] = useState<string>('');
+  const [hasActiveThinking, setHasActiveThinking] = useState(false);
+  const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Group selection state
   const [cliGroups, setCliGroups] = useState<GroupInfo[]>([]);
@@ -60,12 +62,30 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         break;
       case 'container:output':
         setStatus('processing');
+        setHasActiveThinking(true);
+        // Cancel any pending idle transition
+        if (idleTimeoutRef.current) {
+          clearTimeout(idleTimeoutRef.current);
+          idleTimeoutRef.current = null;
+        }
         break;
       case 'container:idle':
-        setStatus('idle');
+        // Delay idle transition to prevent flickering
+        if (!idleTimeoutRef.current) {
+          idleTimeoutRef.current = setTimeout(() => {
+            setStatus('idle');
+            setHasActiveThinking(false);
+            idleTimeoutRef.current = null;
+          }, 500);
+        }
         break;
       case 'container:closed':
         setStatus('idle');
+        setHasActiveThinking(false);
+        if (idleTimeoutRef.current) {
+          clearTimeout(idleTimeoutRef.current);
+          idleTimeoutRef.current = null;
+        }
         break;
       case 'agent:thinking': {
         const thinking = typeof event.data === 'string' ? event.data : '';
@@ -74,11 +94,22 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
           console.error('[CLI Debug] Received thinking:', thinking.slice(0, 100));
         }
         setThinkingContent((prev) => prev + (prev ? '\n' : '') + thinking);
+        setHasActiveThinking(true);
+        // Cancel idle timeout if new thinking arrives
+        if (idleTimeoutRef.current) {
+          clearTimeout(idleTimeoutRef.current);
+          idleTimeoutRef.current = null;
+        }
         break;
       }
       case 'message:received': {
         // Message from CLI channel - clear thinking on new conversation turn
         setThinkingContent('');
+        setHasActiveThinking(false);
+        if (idleTimeoutRef.current) {
+          clearTimeout(idleTimeoutRef.current);
+          idleTimeoutRef.current = null;
+        }
         const data = event.data as {
           sender_name: string;
           content: string;
@@ -124,6 +155,12 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
             groupJid: event.groupJid,
           },
         ]);
+        // Agent finished replying - mark thinking as inactive
+        setHasActiveThinking(false);
+        if (idleTimeoutRef.current) {
+          clearTimeout(idleTimeoutRef.current);
+          idleTimeoutRef.current = null;
+        }
         break;
       }
     }
@@ -258,6 +295,7 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
       // Send message to selected CLI group
       // Add user message to local display immediately
       setThinkingContent(''); // Clear thinking on new user message
+      setHasActiveThinking(false);
       setMessages((prev) => [
         ...prev,
         {
@@ -362,7 +400,7 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         >
           <Text bold>Thinking Process</Text>
           <Box marginTop={1}>
-            <ThinkingPanel content={thinkingContent} isActive={status === 'processing'} />
+            <ThinkingPanel content={thinkingContent} isActive={hasActiveThinking} />
           </Box>
         </Box>
       )}
