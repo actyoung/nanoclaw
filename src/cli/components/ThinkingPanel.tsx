@@ -18,7 +18,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = ({ content }) => {
         <Text dimColor>Waiting for agent...</Text>
       ) : (
         lines.map((line, index) => (
-          <Text key={index} wrap="truncate-end" dimColor={line.startsWith('>')}>
+          <Text key={index} dimColor={line.startsWith('>')}>
             {line || ' '}
           </Text>
         ))
