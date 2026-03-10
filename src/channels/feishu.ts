@@ -539,7 +539,40 @@ export class FeishuChannel implements Channel {
       `Feishu message received${isMentioned ? ` (triggered via @${botName})` : ''}`,
     );
 
+    // 添加 "Get" 表情回应，表示已收到正在处理
+    if (!isFromMe) {
+      this.addReaction(message.message_id, 'Get').catch(() => {});
+    }
+
     this.opts.onMessage(chatJid, newMessage);
+  }
+
+  /**
+   * 为消息添加表情回应
+   * @param messageId 消息 ID
+   * @param emojiType 表情类型，默认 "get"
+   */
+  private async addReaction(
+    messageId: string,
+    emojiType: string = 'Get',
+  ): Promise<void> {
+    try {
+      const response = await this.client.im.v1.messageReaction.create({
+        path: { message_id: messageId },
+        data: { reaction_type: { emoji_type: emojiType } },
+      });
+      if (response.code !== 0) {
+        logger.warn(
+          { messageId: messageId.slice(0, 8), code: response.code, msg: response.msg },
+          'Failed to add reaction - check permission: im:message.reaction:write',
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { messageId: messageId.slice(0, 8), err },
+        'Error adding reaction - check permission: im:message.reaction:write',
+      );
+    }
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
