@@ -106,7 +106,7 @@ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 
 ## Phase 4: Verify
 
-### Test via WhatsApp
+### Test via Feishu
 
 Tell the user:
 

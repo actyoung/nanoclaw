@@ -5,7 +5,7 @@ description: Add voice message transcription to NanoClaw using OpenAI's Whisper 
 
 # Add Voice Transcription
 
-**Note:** This skill currently needs to be updated for Feishu compatibility. Feishu voice messages require downloading audio files via the Feishu Message Resource API (https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-resource/get), which differs from the previous WhatsApp implementation.
+**Note:** This skill adds voice transcription support for Feishu voice messages using the Feishu Message Resource API (https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-resource/get).
 
 NanoClaw now uses WebSocket long connection to receive events from Feishu, so no public webhook URL is required.
 

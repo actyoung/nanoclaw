@@ -32,7 +32,7 @@ claude
 
 然后运行 `/setup`。Claude Code 会处理一切：依赖安装、身份验证、容器设置、服务配置。
 
-> **注意：** 以 `/` 开头的命令（如 `/setup`、`/add-whatsapp`）是 [Claude Code 技能](https://code.claude.com/docs/en/skills)。请在 `claude` CLI 提示符中输入，而非在普通终端中。
+> **注意：** 以 `/` 开头的命令（如 `/setup`、`/add-telegram`）是 [Claude Code 技能](https://code.claude.com/docs/en/skills)。请在 `claude` CLI 提示符中输入，而非在普通终端中。
 
 ## 设计哲学
 
@@ -52,7 +52,7 @@ claude
 
 ## 功能支持
 
-- **多渠道消息** - 通过 飞书、Telegram、Discord、Slack 或 Gmail 与您的助手对话。使用 `/add-feishu` 或 `/add-telegram` 等技能添加渠道，可同时运行一个或多个。
+- **多渠道消息** - 通过 飞书、Telegram、Discord、Slack 或 Gmail 与您的助手对话。飞书是内置默认渠道，其他渠道可使用 `/add-telegram` 等技能添加，可同时运行一个或多个。
 - **隔离的群组上下文** - 每个群组都拥有独立的 `CLAUDE.md` 记忆和隔离的文件系统。它们在各自的容器沙箱中运行，且仅挂载所需的文件系统。
 - **主频道** - 您的私有频道（self-chat），用于管理控制；其他所有群组都完全隔离
 - **计划任务** - 运行 Claude 的周期性作业，并可以给您回发消息

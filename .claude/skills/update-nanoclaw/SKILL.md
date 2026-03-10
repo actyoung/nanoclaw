@@ -201,11 +201,13 @@ If one or more `[BREAKING]` lines are found:
 - For each breaking change, display the full description.
 - Collect all skill names referenced in the breaking change entries (the `/<skill-name>` part).
 - Use AskUserQuestion to ask the user which migration skills they want to run now. Options:
-  - One option per referenced skill (e.g., "Run /add-whatsapp to re-add WhatsApp channel")
+  - One option per referenced skill (e.g., "Run /add-telegram to add Telegram channel")
   - "Skip — I'll handle these manually"
 - Set `multiSelect: true` so the user can pick multiple skills if there are several breaking changes.
 - For each skill the user selects, invoke it using the Skill tool.
 - After all selected skills complete (or if user chose Skip), proceed to Step 7 (skill updates check).
+
+Note: Feishu-specific skills (voice-transcription, reactions, etc.) should be fetched from the `feishu` remote rather than `upstream`.
 
 # Step 7: Check for skill updates
 After the summary, check if skills are distributed as branches in this repo:
