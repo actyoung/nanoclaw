@@ -16,10 +16,18 @@ import {
   updateTask,
   updateTaskAfterRun,
 } from './db.js';
-import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
+import { GroupQueue } from './group-queue.js';
+import { broadcastAgentEvent } from './ipc-server.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
+
+/**
+ * Check if a JID is a CLI group
+ */
+function isCliGroupJid(jid: string): boolean {
+  return jid.startsWith('cli:');
+}
 
 /**
  * Compute the next run time for a recurring task, anchored to the
@@ -182,6 +190,16 @@ async function runTask(
       (proc, containerName) =>
         deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
+        // Handle thinking state for CLI groups
+        if (streamedOutput.isThinking && isCliGroupJid(task.chat_jid)) {
+          broadcastAgentEvent({
+            type: 'agent:thinking',
+            groupJid: task.chat_jid,
+            groupFolder: task.group_folder,
+            timestamp: Date.now(),
+            data: streamedOutput.result || '',
+          });
+        }
         if (streamedOutput.result) {
           result = streamedOutput.result;
           // Forward result to user (sendMessage handles formatting)
