@@ -80,6 +80,7 @@ let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
+let messageLoopResolver: (() => void) | null = null;
 
 // CLI group constants
 // Using cli: prefix to identify CLI groups (cli:main, cli:dev, cli:test, etc.)
@@ -301,6 +302,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   lastAgentTimestamp[chatJid] =
     missedMessages[missedMessages.length - 1].timestamp;
   saveState();
+
+  // Send "starting container" notification to let users know the agent is starting up
+  // during initial container creation (first conversation or after idle timeout)
+  await channel?.sendMessage(chatJid, '🚀 正在启动容器...').catch((err) => {
+    logger.warn({ chatJid, err }, 'Failed to send starting notification');
+  });
 
   // Track idle timer for closing stdin when agent is idle
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -527,6 +534,17 @@ async function runAgent(
   }
 }
 
+/**
+ * Trigger immediate message loop iteration when new messages arrive.
+ * Call this after storing a message to reduce latency.
+ */
+function notifyNewMessage(): void {
+  if (messageLoopResolver) {
+    messageLoopResolver();
+    messageLoopResolver = null;
+  }
+}
+
 async function startMessageLoop(): Promise<void> {
   if (messageLoopRunning) {
     logger.debug('Message loop already running, skipping duplicate start');
@@ -628,7 +646,17 @@ async function startMessageLoop(): Promise<void> {
     } catch (err) {
       logger.error({ err }, 'Error in message loop');
     }
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+    // Wait for POLL_INTERVAL or until notified of new messages
+    const waitPromise = new Promise<void>((resolve) => {
+      messageLoopResolver = resolve;
+      setTimeout(() => {
+        if (messageLoopResolver === resolve) {
+          messageLoopResolver = null;
+          resolve();
+        }
+      }, POLL_INTERVAL);
+    });
+    await waitPromise;
   }
 }
 
@@ -701,6 +729,8 @@ async function main(): Promise<void> {
       // Mark message source for reply routing
       msg.source_channel = channelName;
       storeMessage(msg);
+      // Notify message loop to process immediately (reduces latency)
+      notifyNewMessage();
       // Emit message received event only for CLI groups
       const group = registeredGroups[chatJid];
       if (group && isCliGroupJid(chatJid)) {
@@ -789,7 +819,8 @@ async function main(): Promise<void> {
         is_mentioned: true, // Always trigger for CLI messages
         source_channel: 'cli',
       });
-      // Trigger processing
+      // Trigger processing immediately
+      notifyNewMessage();
       queue.enqueueMessageCheck(targetJid);
     } else if (msg.type === 'list_groups') {
       // Return list of CLI groups
