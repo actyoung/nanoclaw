@@ -65,13 +65,14 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 
 ## What It Supports
 
-- **Multi-channel messaging** - Talk to your assistant from Feishu, Telegram, Discord, Slack, or Gmail. Feishu is included as the default channel. Add other channels with skills like `/add-telegram`. Run one or many at the same time.
+- **Multi-channel messaging** - Talk to your assistant from Feishu, Telegram, Discord, Slack, or Gmail. [Feishu is included as the default channel](docs/FEISHU_SETUP.md) - no skill needed. Add other channels with skills like `/add-telegram`. Run one or many at the same time.
 - **Isolated group context** - Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted to it.
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
 - **Web access** - Search and fetch content from the Web
 - **Container isolation** - Agents are sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks. NanoClaw is the first personal AI assistant to support agent swarms.
+- **CLI voice interaction** - Hands-free voice input (whisper.cpp) and text-to-speech output in terminal groups
 - **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
 
 ## Usage
