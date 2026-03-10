@@ -16,12 +16,13 @@ const PulseDot: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  return (
-    <Text color="cyan">{visible ? '●' : '○'}</Text>
-  );
+  return <Text color="cyan">{visible ? '●' : '○'}</Text>;
 };
 
-export const ThinkingPanel: React.FC<ThinkingPanelProps> = ({ content, isActive = true }) => {
+export const ThinkingPanel: React.FC<ThinkingPanelProps> = ({
+  content,
+  isActive = true,
+}) => {
   // Strip ANSI codes if present
   const cleanContent = content.replace(/\x1b\[[0-9;]*m/g, '');
 
@@ -30,7 +31,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = ({ content, isActive 
 
   // Calculate stats
   const charCount = cleanContent.length;
-  const lineCount = lines.filter(l => l.trim()).length;
+  const lineCount = lines.filter((l) => l.trim()).length;
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -41,9 +42,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = ({ content, isActive 
           {/* Stats header */}
           <Box marginBottom={1}>
             <Text dimColor>
-              {isActive && <PulseDot />}
-              {' '}
-              {lineCount} lines · {charCount} chars
+              {isActive && <PulseDot />} {lineCount} lines · {charCount} chars
               {isActive && <Text color="yellow"> · live</Text>}
             </Text>
           </Box>

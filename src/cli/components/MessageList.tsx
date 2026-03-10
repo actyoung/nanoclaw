@@ -10,10 +10,10 @@ interface MessageListProps {
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
-  maxHeight = 20,
+  maxHeight,
 }) => {
-  // Show last N messages to fit in terminal
-  const visibleMessages = messages.slice(-maxHeight);
+  // Show last N messages if maxHeight is specified
+  const visibleMessages = maxHeight ? messages.slice(-maxHeight) : messages;
 
   if (messages.length === 0) {
     return (
@@ -26,7 +26,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   }
 
   return (
-    <Box flexDirection="column" flexGrow={1} overflow="hidden" paddingY={1}>
+    <Box flexDirection="column" flexGrow={1} paddingY={1}>
       {visibleMessages.map((message) => {
         // Agent replies use › (pointing right), user messages use ‹ (pointing left)
         const isAgent = message.sender === 'agent';

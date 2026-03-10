@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { useIPC } from '../hooks/useIPC.js';
+import { useVoice } from '../hooks/useVoice.js';
 import { Header } from './Header.js';
 import { MessageList } from './MessageList.js';
 import { InputBox } from './InputBox.js';
@@ -8,7 +9,20 @@ import { StatusBar } from './StatusBar.js';
 import { Help } from './Help.js';
 import { ThinkingPanel } from './ThinkingPanel.js';
 import { ApiRequestPanel } from './ApiRequestPanel.js';
-import { AgentEvent, Message, GroupInfo } from '../types.js';
+import { AgentEvent, Message, GroupInfo, VoiceConfig } from '../types.js';
+import { PROJECT_ROOT } from '../../config.js';
+
+// Voice configuration from environment
+const voiceConfig: VoiceConfig = {
+  enabled: process.env.VOICE_ENABLED !== 'false',
+  inputEnabled: process.env.VOICE_INPUT_ENABLED !== 'false',
+  outputEnabled: process.env.VOICE_OUTPUT_ENABLED !== 'false',
+  outputEngine: (process.env.VOICE_OUTPUT_ENGINE as 'say' | 'openai') || 'say',
+  voiceName: process.env.VOICE_NAME,
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  whisperModelPath: `${PROJECT_ROOT}/data/models/ggml-base.bin`,
+  autoSendTranscript: process.env.VOICE_AUTO_SEND === 'true',
+};
 
 const CLI_MAIN_JID = 'cli:main';
 const CLI_MAIN_FOLDER = 'cli-main';
@@ -20,7 +34,9 @@ interface AppProps {
 export const App: React.FC<AppProps> = ({ debug = false }) => {
   const { exit } = useApp();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [status, setStatus] = useState<'idle' | 'starting' | 'processing'>('idle');
+  const [status, setStatus] = useState<'idle' | 'starting' | 'processing'>(
+    'idle',
+  );
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [thinkingContent, setThinkingContent] = useState<string>('');
@@ -41,133 +57,171 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
   const [showGroupSelector, setShowGroupSelector] = useState(false);
   const [selectorIndex, setSelectorIndex] = useState(0);
 
+  // Voice state
+  const [transcriptPreview, setTranscriptPreview] = useState<string | null>(
+    null,
+  );
+  const lastAgentMessageRef = useRef<Message | null>(null);
+  const isRecordingRef = useRef(false);
+
+  // Voice hook
+  const {
+    state: voiceState,
+    setupStatus: voiceSetupStatus,
+    startRecordingVoice,
+    stopRecordingVoice,
+    cancelRecording,
+    speakText,
+    toggleEnabled: toggleVoiceEnabled,
+    setEnabled: setVoiceEnabled,
+    isReady: isVoiceReady,
+  } = useVoice({
+    config: voiceConfig,
+    onTranscript: (text) => {
+      if (voiceConfig.autoSendTranscript && selectedGroup) {
+        // Auto-send transcript
+        handleSubmit(text);
+      } else {
+        // Show preview for user to confirm
+        setTranscriptPreview(text);
+      }
+    },
+  });
+
   // Keep ref in sync with state to avoid closure issues in callbacks
   useEffect(() => {
     selectedGroupRef.current = selectedGroup;
   }, [selectedGroup]);
 
-  const handleEvent = useCallback((event: AgentEvent) => {
-    // Use ref to get latest value and avoid closure issues
-    const currentGroup = selectedGroupRef.current;
-    // Only show messages from the currently selected group
-    // If no group selected yet, allow events from cli:* groups (auto-select on first event)
-    if (currentGroup && event.groupJid !== currentGroup.jid) return;
-    // If no group selected but event is from a cli group, auto-select it
-    if (!currentGroup && event.groupJid.startsWith('cli:')) {
-      // Create default group info
-      const defaultGroup: GroupInfo = {
-        jid: event.groupJid,
-        name: 'CLI Main',
-        folder: 'cli-main',
-      };
-      setSelectedGroup(defaultGroup);
-      subscribeToGroup(defaultGroup.folder);
-    }
+  // Keep recording ref in sync
+  useEffect(() => {
+    isRecordingRef.current = voiceState.isRecording;
+  }, [voiceState.isRecording]);
 
-    switch (event.type) {
-      case 'container:started':
-        setStatus('starting');
-        break;
-      case 'container:output':
-        setStatus('processing');
-        setHasActiveThinking(true);
-        // Cancel any pending idle transition
-        if (idleTimeoutRef.current) {
-          clearTimeout(idleTimeoutRef.current);
-          idleTimeoutRef.current = null;
-        }
-        break;
-      case 'api:request': {
-        const data = event.data as {
-          model?: string;
-          messageCount?: number;
-          maxTokens?: number;
-          firstMessagePreview?: string;
+  const handleEvent = useCallback(
+    (event: AgentEvent) => {
+      // Use ref to get latest value and avoid closure issues
+      const currentGroup = selectedGroupRef.current;
+      // Only show messages from the currently selected group
+      // If no group selected yet, allow events from cli:* groups (auto-select on first event)
+      if (currentGroup && event.groupJid !== currentGroup.jid) return;
+      // If no group selected but event is from a cli group, auto-select it
+      if (!currentGroup && event.groupJid.startsWith('cli:')) {
+        // Create default group info
+        const defaultGroup: GroupInfo = {
+          jid: event.groupJid,
+          name: 'CLI Main',
+          folder: 'cli-main',
         };
-        setApiRequestData(data);
-        setHasActiveApiRequest(true);
-        break;
+        setSelectedGroup(defaultGroup);
+        subscribeToGroup(defaultGroup.folder);
       }
-      case 'container:idle':
-        // Delay idle transition to prevent flickering
-        if (!idleTimeoutRef.current) {
-          idleTimeoutRef.current = setTimeout(() => {
-            setStatus('idle');
-            setHasActiveThinking(false);
+
+      switch (event.type) {
+        case 'container:started':
+          setStatus('starting');
+          break;
+        case 'container:output':
+          setStatus('processing');
+          setHasActiveThinking(true);
+          // Cancel any pending idle transition
+          if (idleTimeoutRef.current) {
+            clearTimeout(idleTimeoutRef.current);
             idleTimeoutRef.current = null;
-          }, 500);
+          }
+          break;
+        case 'api:request': {
+          const data = event.data as {
+            model?: string;
+            messageCount?: number;
+            maxTokens?: number;
+            firstMessagePreview?: string;
+          };
+          setApiRequestData(data);
+          setHasActiveApiRequest(true);
+          break;
         }
-        break;
-      case 'container:closed':
-        setStatus('idle');
-        setHasActiveThinking(false);
-        setHasActiveApiRequest(false);
-        if (idleTimeoutRef.current) {
-          clearTimeout(idleTimeoutRef.current);
-          idleTimeoutRef.current = null;
+        case 'container:idle':
+          // Delay idle transition to prevent flickering
+          if (!idleTimeoutRef.current) {
+            idleTimeoutRef.current = setTimeout(() => {
+              setStatus('idle');
+              setHasActiveThinking(false);
+              idleTimeoutRef.current = null;
+            }, 500);
+          }
+          break;
+        case 'container:closed':
+          setStatus('idle');
+          setHasActiveThinking(false);
+          setHasActiveApiRequest(false);
+          if (idleTimeoutRef.current) {
+            clearTimeout(idleTimeoutRef.current);
+            idleTimeoutRef.current = null;
+          }
+          break;
+        case 'agent:thinking': {
+          const thinking = typeof event.data === 'string' ? event.data : '';
+          if (debug) {
+            // eslint-disable-next-line no-console
+            console.error(
+              '[CLI Debug] Received thinking:',
+              thinking.slice(0, 100),
+            );
+          }
+          setThinkingContent((prev) => prev + (prev ? '\n' : '') + thinking);
+          setHasActiveThinking(true);
+          // Cancel idle timeout if new thinking arrives
+          if (idleTimeoutRef.current) {
+            clearTimeout(idleTimeoutRef.current);
+            idleTimeoutRef.current = null;
+          }
+          break;
         }
-        break;
-      case 'agent:thinking': {
-        const thinking = typeof event.data === 'string' ? event.data : '';
-        if (debug) {
-          // eslint-disable-next-line no-console
-          console.error('[CLI Debug] Received thinking:', thinking.slice(0, 100));
+        case 'message:received': {
+          // Message from CLI channel - clear thinking on new conversation turn
+          setThinkingContent('');
+          setHasActiveThinking(false);
+          setApiRequestData(null);
+          setHasActiveApiRequest(false);
+          if (idleTimeoutRef.current) {
+            clearTimeout(idleTimeoutRef.current);
+            idleTimeoutRef.current = null;
+          }
+          const data = event.data as {
+            sender_name: string;
+            content: string;
+            is_from_me?: boolean;
+          };
+          if (!data.is_from_me) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `${Date.now()}-${Math.random()}`,
+                type: 'received',
+                sender: data.sender_name,
+                content: data.content,
+                timestamp: Date.now(),
+                groupJid: event.groupJid,
+              },
+            ]);
+          }
+          break;
         }
-        setThinkingContent((prev) => prev + (prev ? '\n' : '') + thinking);
-        setHasActiveThinking(true);
-        // Cancel idle timeout if new thinking arrives
-        if (idleTimeoutRef.current) {
-          clearTimeout(idleTimeoutRef.current);
-          idleTimeoutRef.current = null;
-        }
-        break;
-      }
-      case 'message:received': {
-        // Message from CLI channel - clear thinking on new conversation turn
-        setThinkingContent('');
-        setHasActiveThinking(false);
-        setApiRequestData(null);
-        setHasActiveApiRequest(false);
-        if (idleTimeoutRef.current) {
-          clearTimeout(idleTimeoutRef.current);
-          idleTimeoutRef.current = null;
-        }
-        const data = event.data as {
-          sender_name: string;
-          content: string;
-          is_from_me?: boolean;
-        };
-        if (!data.is_from_me) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `${Date.now()}-${Math.random()}`,
-              type: 'received',
-              sender: data.sender_name,
-              content: data.content,
-              timestamp: Date.now(),
-              groupJid: event.groupJid,
-            },
-          ]);
-        }
-        break;
-      }
-      case 'message:sent': {
-        // Agent reply - show as incoming from agent
-        let text: string;
-        let senderName: string | undefined;
-        if (typeof event.data === 'string') {
-          text = event.data;
-        } else if (event.data && typeof event.data === 'object') {
-          const data = event.data as { text?: string; senderName?: string };
-          text = data.text || '';
-          senderName = data.senderName;
-        } else {
-          text = '';
-        }
-        setMessages((prev) => [
-          ...prev,
-          {
+        case 'message:sent': {
+          // Agent reply - show as incoming from agent
+          let text: string;
+          let senderName: string | undefined;
+          if (typeof event.data === 'string') {
+            text = event.data;
+          } else if (event.data && typeof event.data === 'object') {
+            const data = event.data as { text?: string; senderName?: string };
+            text = data.text || '';
+            senderName = data.senderName;
+          } else {
+            text = '';
+          }
+          const newMessage: Message = {
             id: `${Date.now()}-${Math.random()}`,
             type: 'received',
             sender: 'agent',
@@ -175,19 +229,28 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
             content: text,
             timestamp: Date.now(),
             groupJid: event.groupJid,
-          },
-        ]);
-        // Agent finished replying - mark thinking as inactive
-        setHasActiveThinking(false);
-        setHasActiveApiRequest(false);
-        if (idleTimeoutRef.current) {
-          clearTimeout(idleTimeoutRef.current);
-          idleTimeoutRef.current = null;
+          };
+          setMessages((prev) => [...prev, newMessage]);
+          lastAgentMessageRef.current = newMessage;
+
+          // Speak the agent response if TTS is enabled (non-blocking, auto-interrupts previous)
+          if (voiceConfig.outputEnabled && voiceState.enabled) {
+            speakText(text);
+          }
+
+          // Agent finished replying - mark thinking as inactive
+          setHasActiveThinking(false);
+          setHasActiveApiRequest(false);
+          if (idleTimeoutRef.current) {
+            clearTimeout(idleTimeoutRef.current);
+            idleTimeoutRef.current = null;
+          }
+          break;
         }
-        break;
       }
-    }
-  }, []);
+    },
+    [voiceState.enabled, speakText],
+  );
 
   const { connected, sendMessage, listGroups, subscribeToGroup } = useIPC({
     onEvent: handleEvent,
@@ -262,6 +325,7 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
               subscribeToGroup(targetGroup.folder); // Subscribe to new group
               setMessages([]); // Clear messages when switching
               setThinkingContent(''); // Clear thinking when switching
+              setTranscriptPreview(null); // Clear transcript preview
               setMessages((prev) => [
                 ...prev,
                 {
@@ -285,6 +349,71 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
               ]);
             }
             return;
+          }
+          case 'voice': {
+            const subCmd = args[0]?.toLowerCase();
+            switch (subCmd) {
+              case 'on':
+                setVoiceEnabled(true);
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${Math.random()}`,
+                    type: 'received',
+                    sender: 'system',
+                    content: '🔊 Text-to-speech enabled.',
+                    timestamp: Date.now(),
+                  },
+                ]);
+                return;
+              case 'off':
+                setVoiceEnabled(false);
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${Math.random()}`,
+                    type: 'received',
+                    sender: 'system',
+                    content: '🔇 Text-to-speech disabled.',
+                    timestamp: Date.now(),
+                  },
+                ]);
+                return;
+              case 'status':
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${Math.random()}`,
+                    type: 'received',
+                    sender: 'system',
+                    content:
+                      `Voice Status:\n` +
+                      `  TTS: ${voiceState.enabled ? 'enabled' : 'disabled'}\n` +
+                      `  Input: ${voiceConfig.inputEnabled ? 'enabled' : 'disabled'}\n` +
+                      `  Output Engine: ${voiceConfig.outputEngine}\n` +
+                      `  Voice: ${voiceConfig.voiceName || 'default'}\n` +
+                      `  Setup: ${isVoiceReady ? '✓ ready' : '⚠ missing dependencies'}`,
+                    timestamp: Date.now(),
+                  },
+                ]);
+                return;
+              default:
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${Math.random()}`,
+                    type: 'received',
+                    sender: 'system',
+                    content:
+                      'Voice Commands:\n' +
+                      '  /voice on     - Enable text-to-speech\n' +
+                      '  /voice off    - Disable text-to-speech\n' +
+                      '  /voice status - Show voice settings',
+                    timestamp: Date.now(),
+                  },
+                ]);
+                return;
+            }
           }
           default:
             setMessages((prev) => [
@@ -315,6 +444,9 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         return;
       }
 
+      // Clear transcript preview after sending
+      setTranscriptPreview(null);
+
       // Send message to selected CLI group
       // Add user message to local display immediately
       setThinkingContent(''); // Clear thinking on new user message
@@ -332,7 +464,17 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
       ]);
       sendMessage(text, selectedGroup.folder);
     },
-    [sendMessage, exit, selectedGroup, cliGroups, listGroups, subscribeToGroup],
+    [
+      sendMessage,
+      exit,
+      selectedGroup,
+      cliGroups,
+      listGroups,
+      subscribeToGroup,
+      voiceState.enabled,
+      setVoiceEnabled,
+      isVoiceReady,
+    ],
   );
 
   // Global keyboard shortcuts
@@ -359,6 +501,55 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
     if (showHelp) {
       if (key.escape) {
         setShowHelp(false);
+      }
+      return;
+    }
+
+    // Ctrl+R: Toggle voice recording
+    if (key.ctrl && _input === 'r') {
+      if (!voiceConfig.inputEnabled) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            type: 'received',
+            sender: 'system',
+            content:
+              'Voice input is disabled. Enable with VOICE_INPUT_ENABLED=true',
+            timestamp: Date.now(),
+          },
+        ]);
+        return;
+      }
+
+      if (isRecordingRef.current) {
+        // Stop recording
+        stopRecordingVoice().catch((err) => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `${Date.now()}-${Math.random()}`,
+              type: 'received',
+              sender: 'system',
+              content: `Voice error: ${err instanceof Error ? err.message : String(err)}`,
+              timestamp: Date.now(),
+            },
+          ]);
+        });
+      } else {
+        // Start recording
+        startRecordingVoice().catch((err) => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `${Date.now()}-${Math.random()}`,
+              type: 'received',
+              sender: 'system',
+              content: `Voice error: ${err instanceof Error ? err.message : String(err)}`,
+              timestamp: Date.now(),
+            },
+          ]);
+        });
       }
       return;
     }
@@ -423,7 +614,10 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         >
           <Text bold>Thinking Process</Text>
           <Box marginTop={1}>
-            <ThinkingPanel content={thinkingContent} isActive={hasActiveThinking} />
+            <ThinkingPanel
+              content={thinkingContent}
+              isActive={hasActiveThinking}
+            />
           </Box>
         </Box>
       )}
@@ -448,12 +642,21 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
         </Box>
       )}
 
-      <StatusBar status={status} group={selectedGroup?.folder || 'none'} />
+      <StatusBar
+        status={status}
+        group={selectedGroup?.folder || 'none'}
+        voiceState={voiceState}
+      />
 
       <InputBox
         onSubmit={handleSubmit}
         currentGroup={selectedGroup?.folder ?? null}
         disabled={showHelp}
+        isRecording={voiceState.isRecording}
+        isTranscribing={voiceState.isTranscribing}
+        recordingDuration={voiceState.recordingDuration}
+        transcriptPreview={transcriptPreview}
+        onClearTranscript={() => setTranscriptPreview(null)}
       />
     </Box>
   );

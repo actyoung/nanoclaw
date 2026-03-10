@@ -68,7 +68,9 @@ export function startCredentialProxy(
         }
 
         // Log API request to file for CLI debug mode (only when LOG_LEVEL=debug)
-        const isDebugMode = process.env.LOG_LEVEL === 'debug' || process.env.LOG_LEVEL === 'trace';
+        const isDebugMode =
+          process.env.LOG_LEVEL === 'debug' ||
+          process.env.LOG_LEVEL === 'trace';
         if (isCliGroup) {
           try {
             const requestData = JSON.parse(body.toString());

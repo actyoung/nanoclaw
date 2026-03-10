@@ -27,12 +27,24 @@ export const useIPC = ({
   const groupsCallbackRef = useRef<((groups: GroupInfo[]) => void) | null>(
     null,
   );
+  const onEventRef = useRef(onEvent);
+  const onErrorRef = useRef(onError);
+  const onConnectedRef = useRef(onConnected);
+
+  // Keep refs in sync with latest callbacks
+  useEffect(() => {
+    onEventRef.current = onEvent;
+    onErrorRef.current = onError;
+    onConnectedRef.current = onConnected;
+  }, [onEvent, onError, onConnected]);
 
   useEffect(() => {
     // Check if socket file exists
     if (!fs.existsSync(SOCKET_PATH)) {
       setConnecting(false);
-      onError?.('NanoClaw is not running. Start it with: npm run dev');
+      onErrorRef.current?.(
+        'NanoClaw is not running. Start it with: npm run dev',
+      );
       return;
     }
 
@@ -58,17 +70,17 @@ export const useIPC = ({
     socket.on('connect', () => {
       setConnected(true);
       setConnecting(false);
-      onConnected?.();
+      onConnectedRef.current?.();
     });
 
     socket.on('close', () => {
       setConnected(false);
-      onError?.('Disconnected from NanoClaw');
+      onErrorRef.current?.('Disconnected from NanoClaw');
     });
 
     socket.on('error', (err) => {
       setConnecting(false);
-      onError?.(`Connection error: ${err.message}`);
+      onErrorRef.current?.(`Connection error: ${err.message}`);
     });
 
     const handleMessage = (msg: CliResponse) => {
@@ -78,7 +90,8 @@ export const useIPC = ({
           break;
         case 'event':
           if (msg.event) {
-            onEvent(msg.event);
+            // Use ref to always call the latest onEvent
+            onEventRef.current(msg.event);
           }
           break;
         case 'groups_list':

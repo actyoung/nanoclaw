@@ -49,3 +49,29 @@ export interface CliResponse {
   event?: AgentEvent;
   groups?: Array<{ jid: string; name: string; folder: string }>;
 }
+
+// Voice-related types
+export interface VoiceState {
+  isRecording: boolean;
+  isPlaying: boolean;
+  enabled: boolean; // TTS switch
+  recordingDuration: number;
+  isTranscribing: boolean;
+}
+
+export type VoiceEvent =
+  | { type: 'recording:start' }
+  | { type: 'recording:stop'; transcript?: string }
+  | { type: 'tts:start'; text: string }
+  | { type: 'tts:stop' };
+
+export interface VoiceConfig {
+  enabled: boolean;
+  inputEnabled: boolean;
+  outputEnabled: boolean;
+  outputEngine: 'say' | 'openai';
+  voiceName?: string;
+  openaiApiKey?: string;
+  whisperModelPath?: string;
+  autoSendTranscript: boolean;
+}

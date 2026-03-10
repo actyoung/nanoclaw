@@ -19,9 +19,7 @@ const PulseDot: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  return (
-    <Text color="yellow">{visible ? '●' : '○'}</Text>
-  );
+  return <Text color="yellow">{visible ? '●' : '○'}</Text>;
 };
 
 export const ApiRequestPanel: React.FC<ApiRequestPanelProps> = ({
@@ -35,9 +33,10 @@ export const ApiRequestPanel: React.FC<ApiRequestPanelProps> = ({
     <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
         <Text dimColor>
-          {isActive && <PulseDot />}
-          {' '}
-          <Text color="yellow" bold>API Request</Text>
+          {isActive && <PulseDot />}{' '}
+          <Text color="yellow" bold>
+            API Request
+          </Text>
           {isActive && <Text color="magenta"> · in flight</Text>}
         </Text>
       </Box>

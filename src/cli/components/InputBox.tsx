@@ -6,12 +6,22 @@ interface InputBoxProps {
   onSubmit: (text: string) => void;
   currentGroup: string | null;
   disabled?: boolean;
+  isRecording?: boolean;
+  isTranscribing?: boolean;
+  recordingDuration?: number;
+  transcriptPreview?: string | null;
+  onClearTranscript?: () => void;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
   onSubmit,
   currentGroup,
   disabled = false,
+  isRecording = false,
+  isTranscribing = false,
+  recordingDuration = 0,
+  transcriptPreview = null,
+  onClearTranscript,
 }) => {
   const [query, setQuery] = useState('');
   const [multiline, setMultiline] = useState('');
@@ -19,6 +29,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   useInput(
     (_input, key) => {
+      // Don't process input while recording or transcribing
+      if (isRecording || isTranscribing) {
+        return;
+      }
+
       // Shift+Enter: add newline for multiline
       if (key.return && key.shift) {
         setMultiline((prev) => prev + query + '\n');
@@ -29,19 +44,65 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
       // Enter: submit
       if (key.return) {
-        const fullText = multiline + query;
+        const fullText = transcriptPreview || multiline + query;
         if (fullText.trim()) {
           onSubmit(fullText.trim());
           setQuery('');
           setMultiline('');
           setIsMultiline(false);
+          onClearTranscript?.();
         }
       }
     },
-    { isActive: !disabled },
+    { isActive: !disabled && !isRecording && !isTranscribing },
   );
 
   const prompt = currentGroup || '?';
+
+  // Show recording state
+  if (isRecording) {
+    return (
+      <Box flexDirection="column">
+        <Box borderStyle="single" borderColor="red" paddingX={1}>
+          <Text color="red">
+            🔴 Recording... ({recordingDuration}s) - Release Ctrl+R to stop
+          </Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // Show transcribing state
+  if (isTranscribing) {
+    return (
+      <Box flexDirection="column">
+        <Box borderStyle="single" borderColor="yellow" paddingX={1}>
+          <Text color="yellow">🎙️ Transcribing... Please wait</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // Show transcript preview if available
+  if (transcriptPreview) {
+    return (
+      <Box flexDirection="column">
+        <Box paddingLeft={2}>
+          <Text color="cyan">
+            📝 Transcript: {transcriptPreview.slice(0, 50)}
+            {transcriptPreview.length > 50 ? '...' : ''}
+          </Text>
+          <Text dimColor> (Press Enter to send, type to edit)</Text>
+        </Box>
+        <Box borderStyle="single" borderColor="cyan" paddingX={1}>
+          <Text color="cyan">
+            ● {prompt} {'>'}{' '}
+          </Text>
+          <TextInput value={query} onChange={setQuery} />
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column">
@@ -53,7 +114,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
           </Text>
         </Box>
       )}
-      <Box borderStyle="single" borderColor={currentGroup ? 'green' : 'yellow'} paddingX={1}>
+      <Box
+        borderStyle="single"
+        borderColor={currentGroup ? 'green' : 'yellow'}
+        paddingX={1}
+      >
         <Text color={currentGroup ? 'green' : 'yellow'}>
           ● {prompt} {'>'}{' '}
         </Text>
