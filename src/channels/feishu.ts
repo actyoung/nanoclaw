@@ -597,19 +597,26 @@ export class FeishuChannel implements Channel {
    * 获取消息的所有表情回应
    * @param messageId 消息 ID
    */
-  private async getReactions(messageId: string): Promise<Array<{ reaction_id: string; emoji_type: string }>> {
+  private async getReactions(
+    messageId: string,
+  ): Promise<Array<{ reaction_id: string; emoji_type: string }>> {
     try {
       const response = await this.client.im.v1.messageReaction.list({
         path: { message_id: messageId },
       });
       if (response.code === 0 && response.data?.items) {
-        return response.data.items.map((item: { reaction_id?: string; emoji_type?: string }) => ({
-          reaction_id: item.reaction_id || '',
-          emoji_type: item.emoji_type || '',
-        })).filter((item: { reaction_id: string }) => item.reaction_id);
+        return response.data.items
+          .map((item: { reaction_id?: string; emoji_type?: string }) => ({
+            reaction_id: item.reaction_id || '',
+            emoji_type: item.emoji_type || '',
+          }))
+          .filter((item: { reaction_id: string }) => item.reaction_id);
       }
     } catch (err) {
-      logger.debug({ messageId: messageId.slice(0, 8), err }, 'Error getting reactions');
+      logger.debug(
+        { messageId: messageId.slice(0, 8), err },
+        'Error getting reactions',
+      );
     }
     return [];
   }
@@ -688,7 +695,12 @@ export class FeishuChannel implements Channel {
           },
           (err) => {
             logger.warn(
-              { jid, lastMessageId: lastMessageId.slice(0, 8), agentEmoji, err },
+              {
+                jid,
+                lastMessageId: lastMessageId.slice(0, 8),
+                agentEmoji,
+                err,
+              },
               'Failed to update reaction',
             );
           },
