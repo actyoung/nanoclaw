@@ -1,17 +1,17 @@
 ---
 name: add-slack
-description: Add Slack as a channel. Can replace Feishu entirely or run alongside it. Uses Socket Mode (no public URL needed).
+description: Add Slack as a channel. Can replace WhatsApp entirely or run alongside it. Uses Socket Mode (no public URL needed).
 ---
 
 # Add Slack Channel
 
-This skill adds Slack support to NanoClaw using the skills engine for deterministic code changes, then walks through interactive setup.
+This skill adds Slack support to NanoClaw, then walks through interactive setup.
 
 ## Phase 1: Pre-flight
 
 ### Check if already applied
 
-Read `.nanoclaw/state.yaml`. If `slack` is in `applied_skills`, skip to Phase 3 (Setup). The code changes are already in place.
+Check if `src/channels/slack.ts` exists. If it does, skip to Phase 3 (Setup). The code changes are already in place.
 
 ### Ask the user
 
@@ -19,44 +19,43 @@ Read `.nanoclaw/state.yaml`. If `slack` is in `applied_skills`, skip to Phase 3 
 
 ## Phase 2: Apply Code Changes
 
-Run the skills engine to apply this skill's code package. The package files are in this directory alongside this SKILL.md.
-
-### Initialize skills system (if needed)
-
-If `.nanoclaw/` directory doesn't exist yet:
+### Ensure channel remote
 
 ```bash
-npx tsx scripts/apply-skill.ts --init
+git remote -v
 ```
 
-Or call `initSkillsSystem()` from `skills-engine/migrate.ts`.
-
-### Apply the skill
+If `slack` is missing, add it:
 
 ```bash
-npx tsx scripts/apply-skill.ts .claude/skills/add-slack
+git remote add slack https://github.com/qwibitai/nanoclaw-slack.git
 ```
 
-This deterministically:
+### Merge the skill branch
 
-- Adds `src/channels/slack.ts` (SlackChannel class with self-registration via `registerChannel`)
-- Adds `src/channels/slack.test.ts` (46 unit tests)
-- Appends `import './slack.js'` to the channel barrel file `src/channels/index.ts`
-- Installs the `@slack/bolt` npm dependency
-- Records the application in `.nanoclaw/state.yaml`
+```bash
+git fetch slack main
+git merge slack/main
+```
 
-If the apply reports merge conflicts, read the intent file:
+This merges in:
+- `src/channels/slack.ts` (SlackChannel class with self-registration via `registerChannel`)
+- `src/channels/slack.test.ts` (46 unit tests)
+- `import './slack.js'` appended to the channel barrel file `src/channels/index.ts`
+- `@slack/bolt` npm dependency in `package.json`
+- `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in `.env.example`
 
-- `modify/src/channels/index.ts.intent.md` — what changed and invariants
+If the merge reports conflicts, resolve them by reading the conflicted files and understanding the intent of both sides.
 
 ### Validate code changes
 
 ```bash
-npm test
+npm install
 npm run build
+npx vitest run src/channels/slack.test.ts
 ```
 
-All tests must pass (including the new slack tests) and build must be clean before proceeding.
+All tests must pass (including the new Slack tests) and build must be clean before proceeding.
 
 ## Phase 3: Setup
 
@@ -65,7 +64,6 @@ All tests must pass (including the new slack tests) and build must be clean befo
 If the user doesn't have a Slack app, share [SLACK_SETUP.md](SLACK_SETUP.md) which has step-by-step instructions with screenshots guidance, troubleshooting, and a token reference table.
 
 Quick summary of what's needed:
-
 1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
 2. Enable Socket Mode and generate an App-Level Token (`xapp-...`)
 3. Subscribe to bot events: `message.channels`, `message.groups`, `message.im`
@@ -121,9 +119,9 @@ Use the IPC register flow or register directly. The channel ID, name, and folder
 For a main channel (responds to all messages):
 
 ```typescript
-registerGroup('slack:<channel-id>', {
-  name: '<channel-name>',
-  folder: 'slack_main',
+registerGroup("slack:<channel-id>", {
+  name: "<channel-name>",
+  folder: "slack_main",
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: false,
@@ -134,9 +132,9 @@ registerGroup('slack:<channel-id>', {
 For additional channels (trigger-only):
 
 ```typescript
-registerGroup('slack:<channel-id>', {
-  name: '<channel-name>',
-  folder: 'slack_<channel-name>',
+registerGroup("slack:<channel-id>", {
+  name: "<channel-name>",
+  folder: "slack_<channel-name>",
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: true,
@@ -150,7 +148,6 @@ registerGroup('slack:<channel-id>', {
 Tell the user:
 
 > Send a message in your registered Slack channel:
->
 > - For main channel: Any message works
 > - For non-main: `@<assistant-name> hello` (using the configured trigger word)
 >
@@ -181,14 +178,12 @@ tail -f logs/nanoclaw.log
 ### Bot not seeing messages in channels
 
 By default, bots only see messages in channels they've been explicitly added to. Make sure to:
-
 1. Add the bot to each channel you want it to monitor
 2. Check the bot has `channels:history` and/or `groups:history` scopes
 
 ### "missing_scope" errors
 
 If the bot logs `missing_scope` errors:
-
 1. Go to **OAuth & Permissions** in your Slack app settings
 2. Add the missing scope listed in the error message
 3. **Reinstall the app** to your workspace — scope changes require reinstallation
@@ -199,7 +194,6 @@ If the bot logs `missing_scope` errors:
 ### Getting channel ID
 
 If the channel ID is hard to find:
-
 - In Slack desktop: right-click channel → **Copy link** → extract the `C...` ID from the URL
 - In Slack web: the URL shows `https://app.slack.com/client/TXXXXXXX/C0123456789`
 - Via API: `curl -s -H "Authorization: Bearer $SLACK_BOT_TOKEN" "https://slack.com/api/conversations.list" | jq '.channels[] | {id, name}'`
@@ -207,7 +201,6 @@ If the channel ID is hard to find:
 ## After Setup
 
 The Slack channel supports:
-
 - **Public channels** — Bot must be added to the channel
 - **Private channels** — Bot must be invited to the channel
 - **Direct messages** — Users can DM the bot directly
