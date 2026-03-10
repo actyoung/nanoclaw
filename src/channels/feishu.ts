@@ -9,6 +9,8 @@ import {
 } from '../types.js';
 import { FEISHU_APP_ID, FEISHU_APP_SECRET } from '../config.js';
 import { registerChannel, ChannelOpts } from './registry.js';
+import type { FeishuEmojiType } from './feishu-emojis.js';
+import { selectEmojiForMessage } from './feishu-emojis.js';
 
 export interface FeishuChannelOpts {
   onMessage: OnInboundMessage;
@@ -59,6 +61,12 @@ export class FeishuChannel implements Channel {
 
   // 用户名字缓存 (open_id -> name)
   private userNameCache: Map<string, string> = new Map();
+
+  // 消息表情跟踪 (chat_jid:message_id -> emoji_type) - 用于后续更新表情
+  private messageReactions: Map<string, FeishuEmojiType> = new Map();
+
+  // 跟踪每个聊天的最后一条用户消息 ID - 用于后续更新表情
+  private lastUserMessageId: Map<string, string> = new Map();
 
   // 心跳检测相关
   private lastMessageTime = Date.now();
@@ -539,9 +547,10 @@ export class FeishuChannel implements Channel {
       `Feishu message received${isMentioned ? ` (triggered via @${botName})` : ''}`,
     );
 
-    // 添加 "Get" 表情回应，表示已收到正在处理
+    // 为收到的消息添加默认"已收到"表情，并跟踪消息ID用于后续更新
     if (!isFromMe) {
-      this.addReaction(message.message_id, 'Get').catch(() => {});
+      this.lastUserMessageId.set(chatJid, message.message_id);
+      this.addReaction(message.message_id, 'Get', chatJid).catch(() => {});
     }
 
     this.opts.onMessage(chatJid, newMessage);
@@ -550,11 +559,13 @@ export class FeishuChannel implements Channel {
   /**
    * 为消息添加表情回应
    * @param messageId 消息 ID
-   * @param emojiType 表情类型，默认 "get"
+   * @param emojiType 表情类型
+   * @param chatJid 可选，用于跟踪表情状态
    */
   private async addReaction(
     messageId: string,
-    emojiType: string = 'Get',
+    emojiType: FeishuEmojiType,
+    chatJid?: string,
   ): Promise<void> {
     try {
       const response = await this.client.im.v1.messageReaction.create({
@@ -563,9 +574,16 @@ export class FeishuChannel implements Channel {
       });
       if (response.code !== 0) {
         logger.warn(
-          { messageId: messageId.slice(0, 8), code: response.code, msg: response.msg },
+          {
+            messageId: messageId.slice(0, 8),
+            code: response.code,
+            msg: response.msg,
+          },
           'Failed to add reaction - check permission: im:message.reaction:write',
         );
+      } else if (chatJid) {
+        // 记录表情状态，用于后续更新
+        this.messageReactions.set(`${chatJid}:${messageId}`, emojiType);
       }
     } catch (err) {
       logger.warn(
@@ -575,9 +593,59 @@ export class FeishuChannel implements Channel {
     }
   }
 
+  /**
+   * 获取消息的所有表情回应
+   * @param messageId 消息 ID
+   */
+  private async getReactions(messageId: string): Promise<Array<{ reaction_id: string; emoji_type: string }>> {
+    try {
+      const response = await this.client.im.v1.messageReaction.list({
+        path: { message_id: messageId },
+      });
+      if (response.code === 0 && response.data?.items) {
+        return response.data.items.map((item: { reaction_id?: string; emoji_type?: string }) => ({
+          reaction_id: item.reaction_id || '',
+          emoji_type: item.emoji_type || '',
+        })).filter((item: { reaction_id: string }) => item.reaction_id);
+      }
+    } catch (err) {
+      logger.debug({ messageId: messageId.slice(0, 8), err }, 'Error getting reactions');
+    }
+    return [];
+  }
+
+  /**
+   * 更新消息表情回应 - 添加新表情（保留旧表情）
+   * @param chatJid 聊天 JID
+   * @param messageId 消息 ID
+   * @param newEmoji 新表情类型
+   */
+  async updateReaction(
+    chatJid: string,
+    messageId: string,
+    newEmoji: FeishuEmojiType,
+  ): Promise<void> {
+    // 获取当前所有表情
+    const currentReactions = await this.getReactions(messageId);
+
+    // 检查新表情是否已存在
+    const hasNewEmoji = currentReactions.some((r) => r.emoji_type === newEmoji);
+    if (!hasNewEmoji) {
+      // 添加新表情（保留所有旧表情）
+      await this.addReaction(messageId, newEmoji, chatJid);
+    }
+
+    // 更新跟踪状态
+    const key = `${chatJid}:${messageId}`;
+    this.messageReactions.set(key, newEmoji);
+  }
+
   async sendMessage(jid: string, text: string): Promise<void> {
     // 从 feishu:chatId 格式提取 chatId
     const chatId = jid.startsWith('feishu:') ? jid.slice(7) : jid;
+
+    // 根据 Agent 回复内容自动选择合适的表情
+    const agentEmoji = selectEmojiForMessage(text);
 
     if (!this.connected) {
       this.outgoingQueue.push({ chatId, text });
@@ -601,6 +669,29 @@ export class FeishuChannel implements Channel {
         logger.info(
           { chatId, length: text.length },
           'Feishu text message sent',
+        );
+      }
+
+      // Agent 回复后，更新最后一条用户消息的表情
+      const lastMessageId = this.lastUserMessageId.get(jid);
+      logger.info(
+        { jid, lastMessageId: lastMessageId?.slice(0, 8), agentEmoji },
+        'Checking reaction update',
+      );
+      if (lastMessageId && agentEmoji) {
+        this.updateReaction(jid, lastMessageId, agentEmoji).then(
+          () => {
+            logger.info(
+              { jid, lastMessageId: lastMessageId.slice(0, 8), agentEmoji },
+              'Reaction updated successfully',
+            );
+          },
+          (err) => {
+            logger.warn(
+              { jid, lastMessageId: lastMessageId.slice(0, 8), agentEmoji, err },
+              'Failed to update reaction',
+            );
+          },
         );
       }
     } catch (err) {
