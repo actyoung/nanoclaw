@@ -844,36 +844,57 @@ async function main(): Promise<void> {
     onProcess: (groupJid, proc, containerName, groupFolder) =>
       queue.registerProcess(groupJid, proc, containerName, groupFolder),
     sendMessage: async (jid, rawText) => {
+      const text = formatOutbound(rawText);
+      if (!text) return;
+
+      const group = registeredGroups[jid];
+
+      // CLI groups don't have a channel - broadcast via IPC
+      if (group && isCliGroupJid(jid)) {
+        broadcastAgentEvent({
+          type: 'message:sent',
+          groupJid: jid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: {
+            text,
+            senderName: group.name,
+          },
+        });
+        return;
+      }
+
       const channel = findChannel(channels, jid);
       if (!channel) {
         logger.warn({ jid }, 'No channel owns JID, cannot send message');
         return;
       }
-      const text = formatOutbound(rawText);
-      if (text) {
-        await channel.sendMessage(jid, text);
-        const group = registeredGroups[jid];
-        if (group && isCliGroupJid(jid)) {
-          broadcastAgentEvent({
-            type: 'message:sent',
-            groupJid: jid,
-            groupFolder: group.folder,
-            timestamp: Date.now(),
-            data: {
-              text,
-              senderName: group.name,
-            },
-          });
-        }
-      }
+
+      await channel.sendMessage(jid, text);
     },
   });
   startIpcWatcher({
     sendMessage: async (jid, text) => {
+      const group = registeredGroups[jid];
+
+      // CLI groups don't have a channel - broadcast via IPC
+      if (group && isCliGroupJid(jid)) {
+        broadcastAgentEvent({
+          type: 'message:sent',
+          groupJid: jid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: {
+            text,
+            senderName: group.name,
+          },
+        });
+        return;
+      }
+
       const channel = findChannel(channels, jid);
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
       await channel.sendMessage(jid, text);
-      const group = registeredGroups[jid];
       if (group) {
         broadcastAgentEvent({
           type: 'message:sent',
