@@ -120,6 +120,11 @@ export const App: React.FC<AppProps> = ({ debug = false }) => {
       switch (event.type) {
         case 'container:started':
           setStatus('starting');
+          // Clear thinking and API request data for new conversation turn
+          setThinkingContent('');
+          setHasActiveThinking(false);
+          setApiRequestData(null);
+          setHasActiveApiRequest(false);
           break;
         case 'container:output':
           setStatus('processing');
