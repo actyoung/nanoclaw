@@ -192,13 +192,21 @@ async function runTask(
       async (streamedOutput: ContainerOutput) => {
         // Handle thinking state for CLI groups
         if (streamedOutput.isThinking && isCliGroupJid(task.chat_jid)) {
-          broadcastAgentEvent({
-            type: 'agent:thinking',
-            groupJid: task.chat_jid,
-            groupFolder: task.group_folder,
-            timestamp: Date.now(),
-            data: streamedOutput.result || '',
-          });
+          // Strip <internal> tags from thinking content
+          const raw = streamedOutput.result || '';
+          const thinkingMatches = raw.match(/<internal>([\s\S]*?)<\/internal>/g);
+          const thinking = thinkingMatches
+            ?.map((m) => m.replace(/<\/?internal>/g, '').trim())
+            .join('\n');
+          if (thinking) {
+            broadcastAgentEvent({
+              type: 'agent:thinking',
+              groupJid: task.chat_jid,
+              groupFolder: task.group_folder,
+              timestamp: Date.now(),
+              data: thinking,
+            });
+          }
         }
         if (streamedOutput.result) {
           result = streamedOutput.result;
