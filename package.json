@@ -15,7 +15,7 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "prepare": "husky",
     "setup": "tsx setup/index.ts",
-    "auth": "tsx src/whatsapp-auth.ts",
+    "auth": "tsx setup/feishu-auth.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

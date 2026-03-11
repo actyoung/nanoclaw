@@ -422,9 +422,7 @@ export class FeishuChannel implements Channel {
       // 记录未注册群组的信息，方便用户获取 chat_id
       logger.info(
         { chatJid, chatId, chatType },
-        'Received message from unregistered Feishu chat. To register, run: npm run setup -- --step register --jid "' +
-          chatJid +
-          '" --name "main" --folder main',
+        'Received message from unregistered Feishu chat. To register, run: npm run setup -- --step register --jid "' + chatJid + '" --name "main" --folder main',
       );
       return;
     }

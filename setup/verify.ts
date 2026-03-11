@@ -125,10 +125,9 @@ export async function run(_args: string[]): Promise<void> {
 
   const channelAuth: Record<string, string> = {};
 
-  // WhatsApp: check for auth credentials on disk
-  const authDir = path.join(projectRoot, 'store', 'auth');
-  if (fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0) {
-    channelAuth.whatsapp = 'authenticated';
+  // Feishu: check for credentials in .env
+  if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) {
+    channelAuth.feishu = 'authenticated';
   }
 
   // Token-based channels: check .env

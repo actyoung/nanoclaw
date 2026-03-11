@@ -1,9 +1,10 @@
 /**
  * Step: groups — Fetch group metadata from messaging platforms, write to DB.
- * WhatsApp requires an upfront sync (Baileys groupFetchAllParticipating).
- * Other channels discover group names at runtime — this step auto-skips for them.
+ * Feishu discovers groups via WebSocket events.
+ * This step auto-skips if Feishu is not configured.
  * Replaces 05-sync-groups.sh + 05b-list-groups.sh
  */
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -62,19 +63,18 @@ async function listGroups(limit: number): Promise<void> {
 }
 
 async function syncGroups(projectRoot: string): Promise<void> {
-  // Only WhatsApp needs an upfront group sync; other channels resolve names at runtime.
-  // Detect WhatsApp by checking for auth credentials on disk.
-  const authDir = path.join(projectRoot, 'store', 'auth');
-  const hasWhatsAppAuth =
-    fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0;
+  // Check if Feishu is configured via environment variables
+  const hasFeishuConfig = !!(
+    process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET
+  );
 
-  if (!hasWhatsAppAuth) {
-    logger.info('WhatsApp auth not found — skipping group sync');
+  if (!hasFeishuConfig) {
+    logger.info('Feishu not configured — skipping group sync');
     emitStatus('SYNC_GROUPS', {
       BUILD: 'skipped',
       SYNC: 'skipped',
       GROUPS_IN_DB: 0,
-      REASON: 'whatsapp_not_configured',
+      REASON: 'feishu_not_configured',
       STATUS: 'success',
       LOG: 'logs/setup.log',
     });

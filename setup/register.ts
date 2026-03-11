@@ -1,18 +1,17 @@
 /**
  * Step: register — Write channel registration config, create group folders.
  *
- * Accepts --channel to specify the messaging platform (whatsapp, telegram, slack, discord).
+ * Accepts --channel to specify the messaging platform (feishu, telegram, slack, discord).
  * Uses parameterized SQL queries to prevent injection.
  */
 import fs from 'fs';
 import path from 'path';
 
-import Database from 'better-sqlite3';
-
-import { STORE_DIR } from '../src/config.js';
-import { isValidGroupFolder } from '../src/group-folder.js';
-import { logger } from '../src/logger.js';
-import { emitStatus } from './status.js';
+import { STORE_DIR } from '../src/config.ts';
+import { initDatabase, setRegisteredGroup } from '../src/db.ts';
+import { isValidGroupFolder } from '../src/group-folder.ts';
+import { logger } from '../src/logger.ts';
+import { emitStatus } from './status.ts';
 
 interface RegisterArgs {
   jid: string;
@@ -30,7 +29,7 @@ function parseArgs(args: string[]): RegisterArgs {
     jid: '',
     name: '',
     folder: '',
-    channel: 'whatsapp', // backward-compat: pre-refactor installs omit --channel
+    channel: 'feishu', // backward-compat: pre-refactor installs omit --channel
     requiresTrigger: true,
     isMain: false,
     assistantName: 'AI Assistant',
@@ -93,45 +92,21 @@ export async function run(args: string[]): Promise<void> {
   logger.info(parsed, 'Registering channel');
 
   // Ensure data and store directories exist (store/ may not exist on
-  // fresh installs that skip WhatsApp auth, which normally creates it)
+  // fresh installs that skip Feishu auth, which normally creates it)
   fs.mkdirSync(path.join(projectRoot, 'data'), { recursive: true });
   fs.mkdirSync(STORE_DIR, { recursive: true });
 
-  // Write to SQLite using parameterized queries (no SQL injection)
-  const dbPath = path.join(STORE_DIR, 'messages.db');
-  const timestamp = new Date().toISOString();
-  const requiresTriggerInt = parsed.requiresTrigger ? 1 : 0;
+  // Initialize database (creates schema + runs migrations)
+  initDatabase();
 
-  const db = new Database(dbPath);
-  // Ensure schema exists (matches src/db.ts definition)
-  db.exec(`CREATE TABLE IF NOT EXISTS registered_groups (
-    jid TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    folder TEXT NOT NULL UNIQUE,
-    trigger_pattern TEXT,
-    added_at TEXT NOT NULL,
-    container_config TEXT,
-    requires_trigger INTEGER DEFAULT 1,
-    is_main INTEGER DEFAULT 0
-  )`);
-
-  const isMainInt = parsed.isMain ? 1 : 0;
-
-  db.prepare(
-    `INSERT OR REPLACE INTO registered_groups
-     (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
-  ).run(
-    parsed.jid,
-    parsed.name,
-    parsed.folder,
-    parsed.trigger ?? null,
-    timestamp,
-    requiresTriggerInt,
-    isMainInt,
-  );
-
-  db.close();
+  setRegisteredGroup(parsed.jid, {
+    name: parsed.name,
+    folder: parsed.folder,
+    trigger: parsed.trigger,
+    added_at: new Date().toISOString(),
+    requiresTrigger: parsed.requiresTrigger,
+    isMain: parsed.isMain,
+  });
   logger.info('Wrote registration to SQLite');
 
   // Create group folders
