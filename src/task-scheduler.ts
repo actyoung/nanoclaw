@@ -194,7 +194,9 @@ async function runTask(
         if (streamedOutput.isThinking && isCliGroupJid(task.chat_jid)) {
           // Strip <internal> tags from thinking content
           const raw = streamedOutput.result || '';
-          const thinkingMatches = raw.match(/<internal>([\s\S]*?)<\/internal>/g);
+          const thinkingMatches = raw.match(
+            /<internal>([\s\S]*?)<\/internal>/g,
+          );
           const thinking = thinkingMatches
             ?.map((m) => m.replace(/<\/?internal>/g, '').trim())
             .join('\n');
