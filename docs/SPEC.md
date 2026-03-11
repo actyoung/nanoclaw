@@ -396,7 +396,7 @@ The token can be extracted from `~/.claude/.credentials.json` if you're logged i
 ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
-Only the authentication variables (`CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`) are extracted from `.env` and written to `data/env/env`, then mounted into the container at `/workspace/env-dir/env` and sourced by the entrypoint script. This ensures other environment variables in `.env` are not exposed to the agent. This workaround is needed because some container runtimes lose `-e` environment variables when using `-i` (interactive mode with piped stdin).
+Authentication variables (`CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`) are passed directly to the container agent via stdin JSON, not through environment variables or mounted files. The `.env` file is shadowed in the container (mounted as `/dev/null`) to prevent the agent from reading any secrets. Additionally, a PreToolUse SDK hook automatically sanitizes these variables from Bash commands to prevent leakage via `env`, `printenv`, or `$VAR` expansion.
 
 ### Changing the Assistant Name
 

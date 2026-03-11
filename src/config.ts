@@ -1,5 +1,6 @@
-import os from 'os';
-import path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 import { readEnvFile } from './env.js';
 
@@ -81,3 +82,20 @@ export const TRIGGER_PATTERN = new RegExp(
   `^@?(?:${ASSISTANT_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[:：]?\\s*`,
   'i',
 );
+
+/**
+ * Ensure critical data directories exist.
+ * Called early in startup sequence to prevent runtime errors.
+ * Throws on permission errors or if directories cannot be created.
+ */
+export function ensureDataDir(): void {
+  // Create DATA_DIR (data/) - base for all runtime data
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  // Create STORE_DIR (store/) - for persistent storage
+  fs.mkdirSync(STORE_DIR, { recursive: true });
+
+  // Create IPC_ROOT (data/ipc/) - for inter-process communication
+  const IPC_ROOT = path.join(DATA_DIR, 'ipc');
+  fs.mkdirSync(IPC_ROOT, { recursive: true });
+}

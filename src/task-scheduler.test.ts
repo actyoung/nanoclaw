@@ -18,7 +18,7 @@ describe('task scheduler', () => {
     vi.useRealTimers();
   });
 
-  it('pauses due tasks with invalid group folders to prevent retry churn', async () => {
+  it('marks due tasks with invalid group folders as failed', async () => {
     createTask({
       id: 'task-invalid-folder',
       group_folder: '../../outside',
@@ -49,7 +49,7 @@ describe('task scheduler', () => {
     await vi.advanceTimersByTimeAsync(10);
 
     const task = getTaskById('task-invalid-folder');
-    expect(task?.status).toBe('paused');
+    expect(task?.status).toBe('failed');
   });
 
   it('computeNextRun anchors interval tasks to scheduled time to prevent drift', () => {
@@ -66,6 +66,8 @@ describe('task scheduler', () => {
       last_run: null,
       last_result: null,
       status: 'active' as const,
+      retry_count: 0,
+      error_message: null,
       created_at: '2026-01-01T00:00:00.000Z',
     };
 
@@ -90,6 +92,8 @@ describe('task scheduler', () => {
       last_run: null,
       last_result: null,
       status: 'active' as const,
+      retry_count: 0,
+      error_message: null,
       created_at: '2026-01-01T00:00:00.000Z',
     };
 
@@ -114,6 +118,8 @@ describe('task scheduler', () => {
       last_run: null,
       last_result: null,
       status: 'active' as const,
+      retry_count: 0,
+      error_message: null,
       created_at: '2026-01-01T00:00:00.000Z',
     };
 

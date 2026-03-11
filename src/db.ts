@@ -170,6 +170,33 @@ function createSchema(database: Database.Database): void {
   } catch {
     /* column already exists */
   }
+
+  // Add retry_count column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE scheduled_tasks ADD COLUMN retry_count INTEGER DEFAULT 0`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
+  // Add error_message column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE scheduled_tasks ADD COLUMN error_message TEXT`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
+  // Add retry_count column to task_run_logs if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE task_run_logs ADD COLUMN retry_count INTEGER DEFAULT 0`,
+    );
+  } catch {
+    /* column already exists */
+  }
 }
 
 export function initDatabase(): void {
@@ -421,12 +448,12 @@ export function getLastMessageSourceChannel(chatJid: string): string | null {
 }
 
 export function createTask(
-  task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
+  task: Omit<ScheduledTask, 'last_run' | 'last_result' | 'retry_count' | 'error_message'>,
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at, retry_count, error_message)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
   `,
   ).run(
     task.id,
@@ -467,7 +494,7 @@ export function updateTask(
   updates: Partial<
     Pick<
       ScheduledTask,
-      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status'
+      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status' | 'retry_count' | 'error_message' | 'last_result'
     >
   >,
 ): void {
@@ -493,6 +520,18 @@ export function updateTask(
   if (updates.status !== undefined) {
     fields.push('status = ?');
     values.push(updates.status);
+  }
+  if (updates.retry_count !== undefined) {
+    fields.push('retry_count = ?');
+    values.push(updates.retry_count);
+  }
+  if (updates.error_message !== undefined) {
+    fields.push('error_message = ?');
+    values.push(updates.error_message);
+  }
+  if (updates.last_result !== undefined) {
+    fields.push('last_result = ?');
+    values.push(updates.last_result);
   }
 
   if (fields.length === 0) return;
@@ -526,12 +565,14 @@ export function updateTaskAfterRun(
   id: string,
   nextRun: string | null,
   lastResult: string,
+  resetRetryCount: boolean = false,
 ): void {
   const now = new Date().toISOString();
+  const retryClause = resetRetryCount ? ', retry_count = 0' : '';
   db.prepare(
     `
     UPDATE scheduled_tasks
-    SET next_run = ?, last_run = ?, last_result = ?, status = CASE WHEN ? IS NULL THEN 'completed' ELSE status END
+    SET next_run = ?, last_run = ?, last_result = ?, status = CASE WHEN ? IS NULL THEN 'completed' ELSE status END${retryClause}
     WHERE id = ?
   `,
   ).run(nextRun, now, lastResult, nextRun, id);
@@ -540,8 +581,8 @@ export function updateTaskAfterRun(
 export function logTaskRun(log: TaskRunLog): void {
   db.prepare(
     `
-    INSERT INTO task_run_logs (task_id, run_at, duration_ms, status, result, error)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO task_run_logs (task_id, run_at, duration_ms, status, result, error, retry_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     log.task_id,
@@ -550,6 +591,7 @@ export function logTaskRun(log: TaskRunLog): void {
     log.status,
     log.result,
     log.error,
+    log.retry_count ?? 0,
   );
 }
 

@@ -22,6 +22,116 @@ import { broadcastAgentEvent } from './ipc-server.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
+// --- Error Classification and Retry Configuration ---
+
+const MAX_RETRIES = 10;
+const MAX_BACKOFF_MS = 60 * 60 * 1000; // 1 hour in milliseconds
+
+/**
+ * Error types for task execution failures
+ */
+type ErrorType = 'retryable' | 'permanent';
+
+/**
+ * Patterns that indicate retryable errors (temporary issues that may resolve)
+ */
+const RETRYABLE_ERROR_PATTERNS = [
+  // Docker temporarily unavailable
+  /docker.*temporarily unavailable/i,
+  /docker.*connection refused/i,
+  /docker.*daemon/i,
+  /cannot connect to docker/i,
+  /docker.*not running/i,
+  // Network timeouts
+  /timeout/i,
+  /etimedout/i,
+  /econnreset/i,
+  /econnrefused/i,
+  /socket hang up/i,
+  /network error/i,
+  /fetch failed/i,
+  /request timeout/i,
+  // Resource pressure
+  /resource temporarily unavailable/i,
+  /enomem/i,
+  /out of memory/i,
+  /no space left on device/i,
+  /disk full/i,
+  /too many open files/i,
+  /emfile/i,
+  // Container transient issues
+  /container.*not found/i,
+  /container.*already in use/i,
+  /port.*already in use/i,
+  /bind.*address already in use/i,
+];
+
+/**
+ * Patterns that indicate permanent errors (will not resolve with retry)
+ */
+const PERMANENT_ERROR_PATTERNS = [
+  // Container image issues
+  /image not found/i,
+  /no such image/i,
+  /invalid reference format/i,
+  /pull access denied/i,
+  /repository.*not found/i,
+  // Permission issues
+  /permission denied/i,
+  /eacces/i,
+  /access denied/i,
+  /unauthorized/i,
+  /forbidden/i,
+  // Invalid configuration
+  /invalid config/i,
+  /config error/i,
+  /invalid argument/i,
+  /bad request/i,
+  /validation failed/i,
+  // Code/syntax errors
+  /syntax error/i,
+  /module not found/i,
+  /cannot find module/i,
+  /import error/i,
+  // Group folder issues (already handled separately but included for completeness)
+  /invalid group folder/i,
+  /group not found/i,
+];
+
+/**
+ * Classify an error as retryable or permanent based on error message
+ */
+function classifyError(error: string): ErrorType {
+  const lowerError = error.toLowerCase();
+
+  // Check permanent errors first (more specific)
+  for (const pattern of PERMANENT_ERROR_PATTERNS) {
+    if (pattern.test(lowerError)) {
+      return 'permanent';
+    }
+  }
+
+  // Check retryable errors
+  for (const pattern of RETRYABLE_ERROR_PATTERNS) {
+    if (pattern.test(lowerError)) {
+      return 'retryable';
+    }
+  }
+
+  // Default to retryable for unknown errors (safer assumption)
+  return 'retryable';
+}
+
+/**
+ * Calculate next retry time with exponential backoff
+ * Base: 1 minute, doubles each time, max 1 hour
+ */
+function calculateNextRetryTime(retryCount: number): string {
+  const baseDelayMs = 60 * 1000; // 1 minute
+  const delayMs = Math.min(baseDelayMs * Math.pow(2, retryCount), MAX_BACKOFF_MS);
+  return new Date(Date.now() + delayMs).toISOString();
+}
+
 /**
  * Check if a JID is a CLI group
  */
@@ -93,8 +203,7 @@ async function runTask(
     groupDir = resolveGroupFolderPath(task.group_folder);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    // Stop retry churn for malformed legacy rows.
-    updateTask(task.id, { status: 'paused' });
+    // Invalid group folder is a permanent error - mark as failed
     logger.error(
       { taskId: task.id, groupFolder: task.group_folder, error },
       'Task has invalid group folder',
@@ -106,6 +215,12 @@ async function runTask(
       status: 'error',
       result: null,
       error,
+      retry_count: task.retry_count || 0,
+    });
+    updateTask(task.id, {
+      status: 'failed',
+      error_message: error,
+      last_result: `Error: ${error}`,
     });
     return;
   }
@@ -122,6 +237,7 @@ async function runTask(
   );
 
   if (!group) {
+    const error = `Group not found: ${task.group_folder}`;
     logger.error(
       { taskId: task.id, groupFolder: task.group_folder },
       'Group not found for task',
@@ -132,7 +248,14 @@ async function runTask(
       duration_ms: Date.now() - startTime,
       status: 'error',
       result: null,
-      error: `Group not found: ${task.group_folder}`,
+      error,
+      retry_count: task.retry_count || 0,
+    });
+    // Group not found is a permanent error - mark as failed
+    updateTask(task.id, {
+      status: 'failed',
+      error_message: error,
+      last_result: `Error: ${error}`,
     });
     return;
   }
@@ -246,6 +369,7 @@ async function runTask(
   }
 
   const durationMs = Date.now() - startTime;
+  const currentRetryCount = task.retry_count || 0;
 
   logTaskRun({
     task_id: task.id,
@@ -254,15 +378,66 @@ async function runTask(
     status: error ? 'error' : 'success',
     result,
     error,
+    retry_count: currentRetryCount,
   });
 
-  const nextRun = computeNextRun(task);
-  const resultSummary = error
-    ? `Error: ${error}`
-    : result
-      ? result.slice(0, 200)
-      : 'Completed';
-  updateTaskAfterRun(task.id, nextRun, resultSummary);
+  // Handle success case
+  if (!error) {
+    const nextRun = computeNextRun(task);
+    const resultSummary = result ? result.slice(0, 200) : 'Completed';
+    // Reset retry count on success
+    updateTaskAfterRun(task.id, nextRun, resultSummary, true);
+    return;
+  }
+
+  // Handle error case with classification and retry logic
+  const errorType = classifyError(error);
+  const resultSummary = `Error: ${error}`;
+
+  // Check if we've exceeded max retries
+  if (currentRetryCount >= MAX_RETRIES) {
+    logger.error(
+      { taskId: task.id, retryCount: currentRetryCount, error },
+      `Task failed after ${MAX_RETRIES} retries, marking as failed`,
+    );
+    updateTask(task.id, {
+      status: 'failed',
+      error_message: error,
+      last_result: resultSummary,
+    });
+    return;
+  }
+
+  if (errorType === 'permanent') {
+    // Permanent error - mark as failed immediately, do not retry
+    logger.error(
+      { taskId: task.id, error },
+      `Task ${task.id} failed with permanent error: ${error}`,
+    );
+    updateTask(task.id, {
+      status: 'failed',
+      error_message: error,
+      last_result: resultSummary,
+    });
+  } else {
+    // Retryable error - schedule retry with exponential backoff
+    const nextRetryCount = currentRetryCount + 1;
+    const nextRunAt = calculateNextRetryTime(currentRetryCount);
+    const delayMinutes = Math.round(
+      (new Date(nextRunAt).getTime() - Date.now()) / 60000,
+    );
+
+    logger.warn(
+      { taskId: task.id, error, nextRunAt, retryCount: nextRetryCount },
+      `Task ${task.id} failed with retryable error, will retry in ${delayMinutes} minutes (attempt ${nextRetryCount}/${MAX_RETRIES})`,
+    );
+
+    updateTask(task.id, {
+      retry_count: nextRetryCount,
+      next_run: nextRunAt,
+      last_result: resultSummary,
+    });
+  }
 }
 
 let schedulerRunning = false;

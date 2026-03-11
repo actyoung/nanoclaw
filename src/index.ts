@@ -1,20 +1,23 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
   ASSISTANT_NAME,
   CREDENTIAL_PROXY_PORT,
+  DATA_DIR,
   IDLE_TIMEOUT,
   POLL_INTERVAL,
+  STORE_DIR,
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
-import './channels/index.js';
 import {
-  getChannelFactory,
-  getRegisteredChannelNames,
-} from './channels/registry.js';
+  initializeChannels,
+  startChannelReconnection,
+  getChannelStatus,
+} from './channels/index.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -60,6 +63,117 @@ import { logger } from './logger.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
+
+/**
+ * Check if a directory is writable by attempting to create a test file.
+ */
+function isDirectoryWritable(dirPath: string): boolean {
+  try {
+    const testFile = path.join(dirPath, '.write_test');
+    fs.writeFileSync(testFile, '');
+    fs.unlinkSync(testFile);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check available disk space (in bytes).
+ * Returns -1 if unable to determine.
+ */
+function getAvailableDiskSpace(): number {
+  try {
+    const stats = fs.statfsSync(DATA_DIR);
+    return stats.bavail * stats.bsize;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Critical dependency checks that must pass before the application starts.
+ * These are unrecoverable errors - if any check fails, the process exits immediately.
+ */
+async function checkCriticalDependencies(): Promise<void> {
+  const errors: Array<{ message: string; fix: string }> = [];
+
+  // Check 1: Database accessible
+  try {
+    const dbPath = path.join(STORE_DIR, 'messages.db');
+    // Ensure store directory exists first
+    fs.mkdirSync(STORE_DIR, { recursive: true });
+    // Try to initialize database (this will create it if it doesn't exist)
+    initDatabase();
+    // Try a simple query to verify it's working
+    const testResult = getRouterState('__test__');
+    // Clean up test key if it was created
+    if (testResult !== undefined) {
+      // No cleanup needed, just verifying read works
+    }
+  } catch (err) {
+    errors.push({
+      message: `Database is not accessible: ${err instanceof Error ? err.message : String(err)}`,
+      fix: `Check that ${STORE_DIR} exists and is writable. Run: mkdir -p ${STORE_DIR} && chmod 755 ${STORE_DIR}`,
+    });
+  }
+
+  // Check 2: Directories writable
+  const dirsToCheck = [
+    { path: DATA_DIR, name: 'DATA_DIR' },
+    { path: STORE_DIR, name: 'STORE_DIR' },
+  ];
+
+  for (const { path: dirPath, name } of dirsToCheck) {
+    // Ensure directory exists
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+    } catch (err) {
+      errors.push({
+        message: `Cannot create ${name} directory at ${dirPath}: ${err instanceof Error ? err.message : String(err)}`,
+        fix: `Check parent directory permissions. Run: mkdir -p ${dirPath}`,
+      });
+      continue;
+    }
+
+    // Check writability
+    if (!isDirectoryWritable(dirPath)) {
+      errors.push({
+        message: `${name} directory is not writable: ${dirPath}`,
+        fix: `Fix permissions. Run: chmod 755 ${dirPath} && chown $(whoami) ${dirPath}`,
+      });
+    }
+  }
+
+  // Check 3: Disk space (> 100MB required)
+  const availableSpace = getAvailableDiskSpace();
+  const MIN_FREE_SPACE = 100 * 1024 * 1024; // 100MB
+
+  if (availableSpace === -1) {
+    logger.warn('Unable to determine available disk space, continuing anyway');
+  } else if (availableSpace < MIN_FREE_SPACE) {
+    const availableMB = Math.round(availableSpace / (1024 * 1024));
+    errors.push({
+      message: `Insufficient disk space: ${availableMB}MB available, ${Math.round(MIN_FREE_SPACE / (1024 * 1024))}MB required`,
+      fix: `Free up disk space. Run: df -h ${DATA_DIR} to see usage`,
+    });
+  }
+
+  // If any checks failed, log errors and exit
+  if (errors.length > 0) {
+    logger.fatal('╔══════════════════════════════════════════════════════════════╗');
+    logger.fatal('║  CRITICAL DEPENDENCY CHECK FAILED - Cannot start NanoClaw   ║');
+    logger.fatal('╚══════════════════════════════════════════════════════════════╝');
+    for (const error of errors) {
+      logger.fatal(`\n❌ ERROR: ${error.message}`);
+      logger.fatal(`   FIX:   ${error.fix}`);
+    }
+    logger.fatal('\nPlease resolve the above issues and restart the application.');
+    process.exit(1);
+  }
+
+  logger.info('All critical dependency checks passed');
+}
 
 /**
  * Check if a message has a trigger (dual-mode detection).
@@ -110,7 +224,7 @@ function getCliGroups(): Array<{ jid: string; folder: string; name: string }> {
     }));
 }
 
-const channels: Channel[] = [];
+let channels: Channel[] = [];
 const queue = new GroupQueue();
 
 function loadState(): void {
@@ -684,8 +798,11 @@ function ensureContainerSystemRunning(): void {
 }
 
 async function main(): Promise<void> {
+  // Run critical dependency checks first - fail fast if unrecoverable errors exist
+  await checkCriticalDependencies();
+
   ensureContainerSystemRunning();
-  initDatabase();
+  // Note: Database is already initialized in checkCriticalDependencies()
   logger.info('Database initialized');
   loadState();
   ensureCliGroup();
@@ -753,31 +870,103 @@ async function main(): Promise<void> {
     registeredGroups: () => registeredGroups,
   });
 
-  // Create and connect all registered channels.
-  // Each channel self-registers via the barrel import above.
-  // Factories return null when credentials are missing, so unconfigured channels are skipped.
-  for (const channelName of getRegisteredChannelNames()) {
-    const factory = getChannelFactory(channelName)!;
-    const channel = factory(createChannelOpts(channelName));
-    if (!channel) {
-      logger.warn(
-        { channel: channelName },
-        'Channel installed but credentials missing — skipping. Check .env or re-run the channel skill.',
-      );
-      continue;
-    }
-    channels.push(channel);
-    await channel.connect();
-  }
-  if (channels.length === 0) {
-    logger.fatal('No channels connected');
-    process.exit(1);
+  // 3. Start IPC Server (but don't fail if it errors)
+  const ipcServer = getIpcServer();
+  try {
+    ipcServer.start();
+  } catch (err) {
+    logger.warn({ err }, 'IPC server failed to start, continuing without IPC');
   }
 
-  // Start subsystems (independently of connection handler)
-  // Start IPC server for CLI channel communication
-  const ipcServer = getIpcServer();
-  ipcServer.start();
+  // 4. Start task scheduler (EVEN if no channels connected)
+  startSchedulerLoop({
+    registeredGroups: () => registeredGroups,
+    getSessions: () => sessions,
+    queue,
+    onProcess: (groupJid, proc, containerName, groupFolder) =>
+      queue.registerProcess(groupJid, proc, containerName, groupFolder),
+    sendMessage: async (jid, rawText) => {
+      const text = formatOutbound(rawText);
+      if (!text) return;
+
+      const group = registeredGroups[jid];
+
+      // CLI groups don't have a channel - broadcast via IPC
+      if (group && isCliGroupJid(jid)) {
+        broadcastAgentEvent({
+          type: 'message:sent',
+          groupJid: jid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: {
+            text,
+            senderName: group.name,
+          },
+        });
+        return;
+      }
+
+      const channel = findChannel(channels, jid);
+      if (!channel) {
+        logger.warn({ jid }, 'No channel owns JID, cannot send message');
+        return;
+      }
+
+      await channel.sendMessage(jid, text);
+    },
+  });
+
+  // 5. Start IPC Watcher
+  startIpcWatcher({
+    sendMessage: async (jid, text) => {
+      const group = registeredGroups[jid];
+
+      // CLI groups don't have a channel - broadcast via IPC
+      if (group && isCliGroupJid(jid)) {
+        broadcastAgentEvent({
+          type: 'message:sent',
+          groupJid: jid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: {
+            text,
+            senderName: group.name,
+          },
+        });
+        return;
+      }
+
+      const channel = findChannel(channels, jid);
+      if (!channel) throw new Error(`No channel for JID: ${jid}`);
+      await channel.sendMessage(jid, text);
+      if (group) {
+        broadcastAgentEvent({
+          type: 'message:sent',
+          groupJid: jid,
+          groupFolder: group.folder,
+          timestamp: Date.now(),
+          data: {
+            text,
+            senderName: group.name,
+          },
+        });
+      }
+    },
+    registeredGroups: () => registeredGroups,
+    registerGroup,
+    syncGroups: async (force: boolean) => {
+      await Promise.all(
+        channels
+          .filter((ch) => ch.syncGroups)
+          .map((ch) => ch.syncGroups!(force)),
+      );
+    },
+    getAvailableGroups,
+    writeGroupsSnapshot: (gf, im, ag, rj) =>
+      writeGroupsSnapshot(gf, im, ag, rj),
+  });
+
+  // Setup IPC server message handlers
   ipcServer.onMessage((msg) => {
     // Handle incoming messages from CLI clients
     // CLI uses a fixed group JID to prevent routing conflicts
@@ -837,95 +1026,41 @@ async function main(): Promise<void> {
     }));
   });
 
-  startSchedulerLoop({
-    registeredGroups: () => registeredGroups,
-    getSessions: () => sessions,
-    queue,
-    onProcess: (groupJid, proc, containerName, groupFolder) =>
-      queue.registerProcess(groupJid, proc, containerName, groupFolder),
-    sendMessage: async (jid, rawText) => {
-      const text = formatOutbound(rawText);
-      if (!text) return;
-
-      const group = registeredGroups[jid];
-
-      // CLI groups don't have a channel - broadcast via IPC
-      if (group && isCliGroupJid(jid)) {
-        broadcastAgentEvent({
-          type: 'message:sent',
-          groupJid: jid,
-          groupFolder: group.folder,
-          timestamp: Date.now(),
-          data: {
-            text,
-            senderName: group.name,
-          },
-        });
-        return;
-      }
-
-      const channel = findChannel(channels, jid);
-      if (!channel) {
-        logger.warn({ jid }, 'No channel owns JID, cannot send message');
-        return;
-      }
-
-      await channel.sendMessage(jid, text);
-    },
-  });
-  startIpcWatcher({
-    sendMessage: async (jid, text) => {
-      const group = registeredGroups[jid];
-
-      // CLI groups don't have a channel - broadcast via IPC
-      if (group && isCliGroupJid(jid)) {
-        broadcastAgentEvent({
-          type: 'message:sent',
-          groupJid: jid,
-          groupFolder: group.folder,
-          timestamp: Date.now(),
-          data: {
-            text,
-            senderName: group.name,
-          },
-        });
-        return;
-      }
-
-      const channel = findChannel(channels, jid);
-      if (!channel) throw new Error(`No channel for JID: ${jid}`);
-      await channel.sendMessage(jid, text);
-      if (group) {
-        broadcastAgentEvent({
-          type: 'message:sent',
-          groupJid: jid,
-          groupFolder: group.folder,
-          timestamp: Date.now(),
-          data: {
-            text,
-            senderName: group.name,
-          },
-        });
-      }
-    },
-    registeredGroups: () => registeredGroups,
-    registerGroup,
-    syncGroups: async (force: boolean) => {
-      await Promise.all(
-        channels
-          .filter((ch) => ch.syncGroups)
-          .map((ch) => ch.syncGroups!(force)),
-      );
-    },
-    getAvailableGroups,
-    writeGroupsSnapshot: (gf, im, ag, rj) =>
-      writeGroupsSnapshot(gf, im, ag, rj),
-  });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');
     process.exit(1);
+  });
+
+  // 6. Connect channels (async, non-blocking, with retry)
+  // Start channel connections without blocking the main startup
+  const connectChannelsAsync = async () => {
+    // Create and connect all registered channels.
+    // Each channel self-registers via the barrel import above.
+    // Factories return null when credentials are missing, so unconfigured channels are skipped.
+    // Connection failures are caught and retried in the background.
+    channels = await initializeChannels(createChannelOpts);
+
+    if (channels.length === 0) {
+      logger.warn(
+        "No channels connected. Tasks will execute but messages won't be sent.",
+      );
+    } else {
+      const status = getChannelStatus();
+      logger.info(
+        { connected: channels.length, total: status.length },
+        'Channels initialized',
+      );
+    }
+
+    // Start background reconnection for any failed channels
+    startChannelReconnection();
+  };
+
+  // Start channel connections without blocking
+  connectChannelsAsync().catch((err) => {
+    logger.error({ err }, 'Channel connection error');
   });
 }
 

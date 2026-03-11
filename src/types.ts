@@ -76,7 +76,9 @@ export interface ScheduledTask {
   next_run: string | null;
   last_run: string | null;
   last_result: string | null;
-  status: 'active' | 'paused' | 'completed';
+  status: 'active' | 'paused' | 'completed' | 'failed';
+  retry_count: number;
+  error_message: string | null;
   created_at: string;
 }
 
@@ -87,6 +89,7 @@ export interface TaskRunLog {
   status: 'success' | 'error';
   result: string | null;
   error: string | null;
+  retry_count?: number;
 }
 
 // --- Channel abstraction ---

@@ -267,11 +267,14 @@ export class FeishuChannel implements Channel {
     });
 
     // 启动 WebSocket 客户端
-    this.wsClient.start({ eventDispatcher });
-
-    // SDK 会在连接成功后自动发送日志，我们根据日志判断
-    // 由于 SDK 内部处理连接，我们假设启动即开始连接
-    logger.info('WebSocket client started, waiting for connection...');
+    try {
+      this.wsClient.start({ eventDispatcher });
+      logger.info('WebSocket client started, waiting for connection...');
+    } catch (err) {
+      this.connected = false;
+      logger.error({ err }, 'Failed to start WebSocket client');
+      throw err; // Re-throw so the channel status is set to failed
+    }
 
     // 使用一个延迟来设置 connected 状态（SDK 内部会自动重连）
     // 重连后 system.call_back_v2 可能不会被触发，所以使用延迟作为后备

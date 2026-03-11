@@ -107,6 +107,7 @@ export async function run(args: string[]): Promise<void> {
     requiresTrigger: parsed.requiresTrigger,
     isMain: parsed.isMain,
   });
+
   logger.info('Wrote registration to SQLite');
 
   // Create group folders

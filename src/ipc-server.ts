@@ -65,7 +65,7 @@ export class IpcServer {
     });
 
     this.server.on('error', (err) => {
-      logger.error({ err }, 'IPC server error');
+      logger.warn({ err }, 'IPC Server failed to start, CLI features unavailable');
     });
 
     this.server.listen(SOCKET_PATH, () => {
@@ -78,6 +78,7 @@ export class IpcServer {
           'Failed to set socket permissions',
         );
       }
+      ipcServerStarted = true;
       logger.info({ socketPath: SOCKET_PATH }, 'IPC server started');
     });
   }
@@ -240,6 +241,27 @@ export function getIpcServer(): IpcServer {
   return ipcServer;
 }
 
+// Track if IPC server started successfully
+let ipcServerStarted = false;
+
+export function setIpcServerStarted(started: boolean): void {
+  ipcServerStarted = started;
+}
+
 export function broadcastAgentEvent(event: AgentEvent): void {
-  getIpcServer().broadcastEvent(event);
+  // Silently return if IPC server never started
+  if (!ipcServerStarted) {
+    return;
+  }
+
+  try {
+    // Check if socket file exists before attempting to broadcast
+    if (!fs.existsSync(SOCKET_PATH)) {
+      return;
+    }
+    getIpcServer().broadcastEvent(event);
+  } catch (err) {
+    // Silently ignore socket errors - IPC is optional
+    logger.debug({ err }, 'IPC broadcast failed, ignoring');
+  }
 }
