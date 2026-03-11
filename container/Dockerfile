@@ -68,7 +68,7 @@ ENV GOPATH=/home/node/go
 ENV GOBIN=$GOPATH/bin
 ENV PATH=$PATH:$GOBIN
 
-RUN curl -L https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz -o /tmp/go.tar.gz && \
+RUN curl -L https://go.dev/dl/go${GOLANG_VERSION}.linux-arm64.tar.gz -o /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
     rm /tmp/go.tar.gz
 
@@ -88,25 +88,23 @@ RUN npm install -g agent-browser @anthropic-ai/claude-code skills pnpm prettier
 # 4. 现代 CLI 工具（版本更新较频繁，但不如代码频繁）
 # ============================================
 
-# ripgrep
-RUN curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb && \
-    dpkg -i ripgrep_14.1.0-1_amd64.deb && \
-    rm ripgrep_14.1.0-1_amd64.deb
+# ripgrep - install from apt (arm64 compatible)
+RUN apt-get update && apt-get install -y ripgrep && rm -rf /var/lib/apt/lists/*
 
 # fd
-RUN curl -LO https://github.com/sharkdp/fd/releases/download/v9.0.0/fd_9.0.0_amd64.deb && \
-    dpkg -i fd_9.0.0_amd64.deb && \
-    rm fd_9.0.0_amd64.deb
+RUN curl -LO https://github.com/sharkdp/fd/releases/download/v9.0.0/fd_9.0.0_arm64.deb && \
+    dpkg -i fd_9.0.0_arm64.deb && \
+    rm fd_9.0.0_arm64.deb
 
 # bat
-RUN curl -LO https://github.com/sharkdp/bat/releases/download/v0.24.0/bat_0.24.0_amd64.deb && \
-    dpkg -i bat_0.24.0_amd64.deb && \
-    rm bat_0.24.0_amd64.deb
+RUN curl -LO https://github.com/sharkdp/bat/releases/download/v0.24.0/bat_0.24.0_arm64.deb && \
+    dpkg -i bat_0.24.0_arm64.deb && \
+    rm bat_0.24.0_arm64.deb
 
 # lsd
-RUN curl -LO https://github.com/lsd-rs/lsd/releases/download/v1.0.0/lsd_1.0.0_amd64.deb && \
-    dpkg -i lsd_1.0.0_amd64.deb && \
-    rm lsd_1.0.0_amd64.deb
+RUN curl -LO https://github.com/lsd-rs/lsd/releases/download/v1.0.0/lsd_1.0.0_arm64.deb && \
+    dpkg -i lsd_1.0.0_arm64.deb && \
+    rm lsd_1.0.0_arm64.deb
 
 # Starship
 RUN curl -sS https://starship.rs/install.sh | sh -s -- -y || \
@@ -123,24 +121,24 @@ RUN git clone --depth 1 https://github.com/junegunn/fzf.git /home/node/.fzf && \
     ln -sf /home/node/.fzf/bin/fzf /usr/local/bin/fzf
 
 # git-delta (语法高亮 diff)
-RUN curl -LO https://github.com/dandavison/delta/releases/download/0.17.0/git-delta_0.17.0_amd64.deb && \
-    dpkg -i git-delta_0.17.0_amd64.deb && \
-    rm git-delta_0.17.0_amd64.deb
+RUN curl -LO https://github.com/dandavison/delta/releases/download/0.17.0/git-delta_0.17.0_arm64.deb && \
+    dpkg -i git-delta_0.17.0_arm64.deb && \
+    rm git-delta_0.17.0_arm64.deb
 
 # yq (YAML 处理器)
-RUN curl -LO https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64 && \
-    chmod +x yq_linux_amd64 && \
-    mv yq_linux_amd64 /usr/local/bin/yq
+RUN curl -LO https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_arm64 && \
+    chmod +x yq_linux_arm64 && \
+    mv yq_linux_arm64 /usr/local/bin/yq
 
 # shfmt (Shell 脚本格式化)
-RUN curl -LO https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_linux_amd64 && \
-    chmod +x shfmt_v3.8.0_linux_amd64 && \
-    mv shfmt_v3.8.0_linux_amd64 /usr/local/bin/shfmt
+RUN curl -LO https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_linux_arm64 && \
+    chmod +x shfmt_v3.8.0_linux_arm64 && \
+    mv shfmt_v3.8.0_linux_arm64 /usr/local/bin/shfmt
 
 # hyperfine (命令行基准测试)
-RUN curl -LO https://github.com/sharkdp/hyperfine/releases/download/v1.18.0/hyperfine_1.18.0_amd64.deb && \
-    dpkg -i hyperfine_1.18.0_amd64.deb && \
-    rm hyperfine_1.18.0_amd64.deb
+RUN curl -LO https://github.com/sharkdp/hyperfine/releases/download/v1.18.0/hyperfine_1.18.0_arm64.deb && \
+    dpkg -i hyperfine_1.18.0_arm64.deb && \
+    rm hyperfine_1.18.0_arm64.deb
 
 # ============================================
 # 5. Shell 配置（相对稳定）

@@ -173,6 +173,15 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Per-group Evomap sessions directory (isolated from other groups)
+  const evomapDir = path.join(DATA_DIR, 'sessions', group.folder, '.evomap');
+  fs.mkdirSync(evomapDir, { recursive: true });
+  mounts.push({
+    hostPath: evomapDir,
+    containerPath: '/home/node/.evomap',
+    readonly: false,
+  });
+
   // Per-group Go and Rust caches: persisted to host, writable by any UID
   const goDir = path.join(DATA_DIR, 'sessions', group.folder, 'go');
   const cargoDir = path.join(DATA_DIR, 'sessions', group.folder, '.cargo');
