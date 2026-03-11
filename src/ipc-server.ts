@@ -65,7 +65,10 @@ export class IpcServer {
     });
 
     this.server.on('error', (err) => {
-      logger.warn({ err }, 'IPC Server failed to start, CLI features unavailable');
+      logger.warn(
+        { err },
+        'IPC Server failed to start, CLI features unavailable',
+      );
     });
 
     this.server.listen(SOCKET_PATH, () => {

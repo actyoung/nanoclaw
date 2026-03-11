@@ -161,14 +161,22 @@ async function checkCriticalDependencies(): Promise<void> {
 
   // If any checks failed, log errors and exit
   if (errors.length > 0) {
-    logger.fatal('╔══════════════════════════════════════════════════════════════╗');
-    logger.fatal('║  CRITICAL DEPENDENCY CHECK FAILED - Cannot start NanoClaw   ║');
-    logger.fatal('╚══════════════════════════════════════════════════════════════╝');
+    logger.fatal(
+      '╔══════════════════════════════════════════════════════════════╗',
+    );
+    logger.fatal(
+      '║  CRITICAL DEPENDENCY CHECK FAILED - Cannot start NanoClaw   ║',
+    );
+    logger.fatal(
+      '╚══════════════════════════════════════════════════════════════╝',
+    );
     for (const error of errors) {
       logger.fatal(`\n❌ ERROR: ${error.message}`);
       logger.fatal(`   FIX:   ${error.fix}`);
     }
-    logger.fatal('\nPlease resolve the above issues and restart the application.');
+    logger.fatal(
+      '\nPlease resolve the above issues and restart the application.',
+    );
     process.exit(1);
   }
 

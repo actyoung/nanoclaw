@@ -195,7 +195,10 @@ export function startIpcWatcher(deps: IpcDeps): void {
             }
           }
         } catch (err) {
-          logger.error({ err, sourceGroup }, 'Error reading IPC tasks directory');
+          logger.error(
+            { err, sourceGroup },
+            'Error reading IPC tasks directory',
+          );
         }
       }
     } catch (err) {

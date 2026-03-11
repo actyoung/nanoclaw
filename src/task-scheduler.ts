@@ -128,7 +128,10 @@ function classifyError(error: string): ErrorType {
  */
 function calculateNextRetryTime(retryCount: number): string {
   const baseDelayMs = 60 * 1000; // 1 minute
-  const delayMs = Math.min(baseDelayMs * Math.pow(2, retryCount), MAX_BACKOFF_MS);
+  const delayMs = Math.min(
+    baseDelayMs * Math.pow(2, retryCount),
+    MAX_BACKOFF_MS,
+  );
   return new Date(Date.now() + delayMs).toISOString();
 }
 

@@ -182,9 +182,7 @@ function createSchema(database: Database.Database): void {
 
   // Add error_message column if it doesn't exist (migration for existing DBs)
   try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN error_message TEXT`,
-    );
+    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN error_message TEXT`);
   } catch {
     /* column already exists */
   }
@@ -448,7 +446,10 @@ export function getLastMessageSourceChannel(chatJid: string): string | null {
 }
 
 export function createTask(
-  task: Omit<ScheduledTask, 'last_run' | 'last_result' | 'retry_count' | 'error_message'>,
+  task: Omit<
+    ScheduledTask,
+    'last_run' | 'last_result' | 'retry_count' | 'error_message'
+  >,
 ): void {
   db.prepare(
     `
@@ -494,7 +495,14 @@ export function updateTask(
   updates: Partial<
     Pick<
       ScheduledTask,
-      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status' | 'retry_count' | 'error_message' | 'last_result'
+      | 'prompt'
+      | 'schedule_type'
+      | 'schedule_value'
+      | 'next_run'
+      | 'status'
+      | 'retry_count'
+      | 'error_message'
+      | 'last_result'
     >
   >,
 ): void {

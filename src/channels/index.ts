@@ -3,7 +3,11 @@
 
 import { logger } from '../logger.js';
 import { Channel } from '../types.js';
-import { ChannelOpts, getChannelFactory, getRegisteredChannelNames } from './registry.js';
+import {
+  ChannelOpts,
+  getChannelFactory,
+  getRegisteredChannelNames,
+} from './registry.js';
 
 // feishu
 import './feishu.js';
@@ -17,7 +21,11 @@ import './feishu.js';
 // whatsapp
 
 // Channel connection status types
-export type ChannelStatus = 'connecting' | 'connected' | 'disconnected' | 'failed';
+export type ChannelStatus =
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'failed';
 
 // Channel status tracking
 interface ChannelState {
@@ -33,8 +41,8 @@ const channelStates = new Map<string, ChannelState>();
 
 // Reconnection configuration
 const RECONFIG = {
-  initialDelayMs: 30_000,    // 30 seconds
-  maxDelayMs: 5 * 60_000,    // 5 minutes
+  initialDelayMs: 30_000, // 30 seconds
+  maxDelayMs: 5 * 60_000, // 5 minutes
   backoffMultiplier: 2,
 };
 
@@ -45,7 +53,7 @@ let reconnectionInterval: ReturnType<typeof setInterval> | null = null;
  * Wraps each channel's connect() in try-catch for fault tolerance.
  */
 export async function initializeChannels(
-  createChannelOpts: (name: string) => ChannelOpts
+  createChannelOpts: (name: string) => ChannelOpts,
 ): Promise<Channel[]> {
   const connectedChannels: Channel[] = [];
 
@@ -60,7 +68,7 @@ export async function initializeChannels(
     if (!channel) {
       logger.warn(
         { channel: channelName },
-        'Channel installed but credentials missing — skipping. Check .env or re-run the channel skill.'
+        'Channel installed but credentials missing — skipping. Check .env or re-run the channel skill.',
       );
       continue;
     }
@@ -87,7 +95,7 @@ export async function initializeChannels(
       state.nextRetryAt = Date.now() + RECONFIG.initialDelayMs;
       logger.warn(
         { channel: channelName, err: state.lastError },
-        'Channel connection failed, will retry in background'
+        'Channel connection failed, will retry in background',
       );
     }
   }
@@ -127,7 +135,7 @@ export function getChannelState(name: string): ChannelState | undefined {
 export function updateChannelStatus(
   name: string,
   status: ChannelStatus,
-  error?: Error
+  error?: Error,
 ): void {
   const state = channelStates.get(name);
   if (state) {
@@ -142,7 +150,8 @@ export function updateChannelStatus(
  * Calculate the next retry delay using exponential backoff.
  */
 function calculateRetryDelay(retryCount: number): number {
-  const delay = RECONFIG.initialDelayMs * Math.pow(RECONFIG.backoffMultiplier, retryCount);
+  const delay =
+    RECONFIG.initialDelayMs * Math.pow(RECONFIG.backoffMultiplier, retryCount);
   return Math.min(delay, RECONFIG.maxDelayMs);
 }
 
@@ -152,7 +161,7 @@ function calculateRetryDelay(retryCount: number): number {
 async function reconnectChannel(state: ChannelState): Promise<void> {
   logger.info(
     { channel: state.name, attempt: state.retryCount + 1 },
-    'Attempting to reconnect channel'
+    'Attempting to reconnect channel',
   );
 
   try {
@@ -170,7 +179,7 @@ async function reconnectChannel(state: ChannelState): Promise<void> {
     state.nextRetryAt = Date.now() + delay;
     logger.warn(
       { channel: state.name, err: state.lastError, nextRetryInMs: delay },
-      'Channel reconnection failed, will retry later'
+      'Channel reconnection failed, will retry later',
     );
   }
 }
@@ -195,7 +204,7 @@ export function startChannelReconnection(): void {
         reconnectChannel(state).catch((err) => {
           logger.error(
             { channel: state.name, err },
-            'Unexpected error during channel reconnection'
+            'Unexpected error during channel reconnection',
           );
         });
       }
@@ -228,6 +237,6 @@ export function getConnectedChannels(): Channel[] {
  */
 export function hasActiveChannels(): boolean {
   return Array.from(channelStates.values()).some(
-    (state) => state.status === 'connected' || state.status === 'connecting'
+    (state) => state.status === 'connected' || state.status === 'connecting',
   );
 }
