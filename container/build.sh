@@ -1,10 +1,36 @@
 #!/bin/bash
 # Build the NanoClaw agent container image
+# Automatically detects system architecture (ARM64 for M-series Macs, AMD64 for Intel Macs)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# Detect system architecture
+# macOS: 'arm64' for M-series (M1/M2/M3/M4), 'x86_64' for Intel
+# Linux: 'aarch64' for ARM64, 'x86_64' for AMD64
+ARCH=$(uname -m)
+
+# Normalize architecture names
+if [[ "$ARCH" == "arm64" ]] || [[ "$ARCH" == "aarch64" ]]; then
+    DOCKERFILE="Dockerfile.arm64"
+    ARCH_NAME="ARM64 (Apple Silicon / M-series)"
+elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
+    DOCKERFILE="Dockerfile.amd64"
+    ARCH_NAME="AMD64 (Intel)"
+else
+    echo "Error: Unsupported architecture: $ARCH"
+    echo "Supported architectures: arm64, aarch64, x86_64, amd64"
+    exit 1
+fi
+
+# Check if the Dockerfile exists
+if [[ ! -f "$DOCKERFILE" ]]; then
+    echo "Error: Dockerfile not found: $DOCKERFILE"
+    echo "Please ensure the Dockerfile exists for your architecture."
+    exit 1
+fi
 
 # Update skills-cli with latest find-skills content from vercel-labs/skills repo
 update_skills_cli() {
@@ -113,14 +139,22 @@ IMAGE_NAME="nanoclaw-agent"
 TAG="${1:-latest}"
 CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
 
-echo "Building NanoClaw agent container image..."
-echo "Image: ${IMAGE_NAME}:${TAG}"
+echo "=========================================="
+echo "Building NanoClaw agent container image"
+echo "=========================================="
+echo "Architecture: $ARCH_NAME"
+echo "Dockerfile:   $DOCKERFILE"
+echo "Image:        ${IMAGE_NAME}:${TAG}"
+echo ""
 
-${CONTAINER_RUNTIME} build -t "${IMAGE_NAME}:${TAG}" .
+${CONTAINER_RUNTIME} build -f "$DOCKERFILE" -t "${IMAGE_NAME}:${TAG}" .
 
 echo ""
+echo "=========================================="
 echo "Build complete!"
+echo "=========================================="
 echo "Image: ${IMAGE_NAME}:${TAG}"
+echo "Architecture: $ARCH_NAME"
 echo ""
 echo "Test with:"
 echo "  echo '{\"prompt\":\"What is 2+2?\",\"groupFolder\":\"test\",\"chatJid\":\"test@g.us\",\"isMain\":false}' | ${CONTAINER_RUNTIME} run -i ${IMAGE_NAME}:${TAG}"
