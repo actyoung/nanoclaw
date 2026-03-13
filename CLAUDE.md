@@ -131,6 +131,25 @@ Reactions are selected based on message content keywords (supports English and C
 - macOS `say` command should work out of the box
 - For OpenAI TTS, verify `OPENAI_API_KEY` is set
 
+### Database & Storage
+
+**Database file location:**
+- SQLite database: `store/messages.db` (relative to project root)
+- IPC files: `data/ipc/{group-folder}/`
+- Session cache: `data/sessions/{group-folder}/`
+- Group files: `groups/{name}/`
+
+**Database locked or corrupted:**
+- Stop NanoClaw: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist`
+- Backup: `cp store/messages.db store/messages.db.bak`
+- Check integrity: `sqlite3 store/messages.db "PRAGMA integrity_check;"`
+- If corrupted, restore from backup or delete to start fresh
+
+**Disk space issues:**
+- NanoClaw requires >100MB free space on startup
+- Check: `df -h .` (run in project directory)
+- Clean up: `rm -rf data/sessions/*/container-*.log` (old container logs)
+
 ### Container Issues
 
 **Agent container fails to start:**
