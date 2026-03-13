@@ -244,7 +244,10 @@ nanoclaw/
 ├── docs/
 │   ├── SPEC.md                    # This specification document
 │   ├── REQUIREMENTS.md            # Architecture decisions
-│   └── SECURITY.md                # Security model
+│   ├── SECURITY.md                # Security model
+│   ├── ARCHITECTURE.md            # System architecture documentation
+│   ├── CLI.md                     # CLI channel features (voice, API debug)
+│   └── FEISHU.md                  # Feishu channel features (reactions)
 ├── README.md                      # User documentation
 ├── package.json                   # Node.js dependencies
 ├── tsconfig.json                  # TypeScript configuration
