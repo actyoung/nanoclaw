@@ -128,15 +128,21 @@ export class FeishuChannel implements Channel {
       };
 
       if (tokenData.code !== 0 || !tokenData.tenant_access_token) {
-        logger.warn({ code: tokenData.code }, 'Failed to get tenant access token');
+        logger.warn(
+          { code: tokenData.code },
+          'Failed to get tenant access token',
+        );
         return;
       }
 
-      const botRes = await fetch('https://open.feishu.cn/open-apis/bot/v3/info', {
-        headers: {
-          Authorization: `Bearer ${tokenData.tenant_access_token}`,
+      const botRes = await fetch(
+        'https://open.feishu.cn/open-apis/bot/v3/info',
+        {
+          headers: {
+            Authorization: `Bearer ${tokenData.tenant_access_token}`,
+          },
         },
-      });
+      );
 
       const botData = (await botRes.json()) as {
         code: number;
@@ -146,7 +152,10 @@ export class FeishuChannel implements Channel {
       if (botData.code === 0 && botData.bot?.open_id) {
         this.botOpenId = botData.bot.open_id;
         this.botName = botData.bot.app_name;
-        logger.info({ botOpenId: this.botOpenId, botName: this.botName }, 'Feishu bot info fetched');
+        logger.info(
+          { botOpenId: this.botOpenId, botName: this.botName },
+          'Feishu bot info fetched',
+        );
       }
     } catch (err) {
       logger.warn({ err }, 'Error fetching bot info');
@@ -170,7 +179,10 @@ export class FeishuChannel implements Channel {
         return name;
       }
     } catch (err) {
-      logger.warn({ err, openId: openId.slice(0, 8) }, 'Failed to fetch user name');
+      logger.warn(
+        { err, openId: openId.slice(0, 8) },
+        'Failed to fetch user name',
+      );
     }
     return null;
   }
@@ -198,11 +210,20 @@ export class FeishuChannel implements Channel {
     const chatJid = `feishu:${chatId}`;
 
     const timestamp = new Date(parseInt(message.create_time)).toISOString();
-    this.opts.onChatMetadata(chatJid, timestamp, undefined, 'feishu', message.chat_type === 'group');
+    this.opts.onChatMetadata(
+      chatJid,
+      timestamp,
+      undefined,
+      'feishu',
+      message.chat_type === 'group',
+    );
 
     const groups = this.opts.registeredGroups();
     if (!groups[chatJid]) {
-      logger.info({ chatJid, chatId }, 'Received message from unregistered Feishu chat');
+      logger.info(
+        { chatJid, chatId },
+        'Received message from unregistered Feishu chat',
+      );
       return;
     }
 
@@ -219,7 +240,9 @@ export class FeishuChannel implements Channel {
     }
 
     const senderId = sender.sender_id.open_id;
-    let senderName = message.mentions?.find((m) => m.id.open_id === senderId)?.name;
+    let senderName = message.mentions?.find(
+      (m) => m.id.open_id === senderId,
+    )?.name;
 
     if (!senderName) {
       const cachedName = this.userNameCache.get(senderId);
@@ -227,7 +250,11 @@ export class FeishuChannel implements Channel {
         senderName = cachedName;
       } else {
         this.fetchUserName(senderId).then((name) => {
-          if (name) logger.debug({ openId: senderId.slice(0, 8), name }, 'Fetched user name');
+          if (name)
+            logger.debug(
+              { openId: senderId.slice(0, 8), name },
+              'Fetched user name',
+            );
         });
         senderName = senderId.slice(0, 8);
       }
@@ -240,8 +267,13 @@ export class FeishuChannel implements Channel {
     if (message.mentions && message.mentions.length > 0) {
       for (const mention of message.mentions) {
         const isOtherBot = mention.id.open_id !== this.botOpenId;
-        const displayName = isOtherBot ? `${mention.name}[机器人]` : mention.name;
-        processedContent = processedContent.replaceAll(mention.key, `@${displayName}`);
+        const displayName = isOtherBot
+          ? `${mention.name}[机器人]`
+          : mention.name;
+        processedContent = processedContent.replaceAll(
+          mention.key,
+          `@${displayName}`,
+        );
       }
     }
 
@@ -266,7 +298,10 @@ export class FeishuChannel implements Channel {
     this.opts.onMessage(chatJid, newMessage);
   }
 
-  private async addReaction(messageId: string, emojiType: FeishuEmojiType): Promise<void> {
+  private async addReaction(
+    messageId: string,
+    emojiType: FeishuEmojiType,
+  ): Promise<void> {
     try {
       await this.client.im.v1.messageReaction.create({
         path: { message_id: messageId },
@@ -312,7 +347,9 @@ export class FeishuChannel implements Channel {
     });
 
     if (response.code !== 0) {
-      throw new Error(`Feishu API error: ${response.msg} (code: ${response.code})`);
+      throw new Error(
+        `Feishu API error: ${response.msg} (code: ${response.code})`,
+      );
     }
   }
 
@@ -328,7 +365,9 @@ export class FeishuChannel implements Channel {
     });
 
     if (response.code !== 0) {
-      throw new Error(`Feishu API error: ${response.msg} (code: ${response.code})`);
+      throw new Error(
+        `Feishu API error: ${response.msg} (code: ${response.code})`,
+      );
     }
   }
 
@@ -341,7 +380,12 @@ export class FeishuChannel implements Channel {
       const trimmedLine = line.trim();
       if (!trimmedLine) continue;
 
-      if (trimmedLine.startsWith('## ') || (trimmedLine.startsWith('**') && trimmedLine.endsWith('**') && trimmedLine.length < 100)) {
+      if (
+        trimmedLine.startsWith('## ') ||
+        (trimmedLine.startsWith('**') &&
+          trimmedLine.endsWith('**') &&
+          trimmedLine.length < 100)
+      ) {
         if (currentSection.length > 0) {
           elements.push(...currentSection);
           currentSection = [];
@@ -463,7 +507,9 @@ export class FeishuChannel implements Channel {
 // 自注册 Feishu 频道
 registerChannel('feishu', (opts: ChannelOpts) => {
   if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
-    logger.debug('Feishu: FEISHU_APP_ID or FEISHU_APP_SECRET not set, skipping');
+    logger.debug(
+      'Feishu: FEISHU_APP_ID or FEISHU_APP_SECRET not set, skipping',
+    );
     return null;
   }
   return new FeishuChannel(opts);
